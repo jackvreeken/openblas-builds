@@ -38,7 +38,7 @@ jobs:
     secrets: inherit
 
   build:
-    name: Build ${{ matrix.runner }} ${{ matrix.manylinux || 'native' }}
+    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     needs: check-version
     if: needs.check-version.outputs.should-build == 'true'
@@ -49,25 +49,26 @@ jobs:
         include:
           # Linux manylinux builds
           - runner: ubuntu-latest
-            manylinux: manylinux2014
             toolset: devtoolset-10
+            name: manylinux2014-x86_64
           - runner: ubuntu-latest
-            manylinux: manylinux_2_28
             toolset: gcc-toolset-14
+            name: manylinux_2_28-x86_64
           - runner: ubuntu-latest
-            manylinux: manylinux_2_34
             toolset: gcc-toolset-14
+            name: manylinux_2_34-x86_64
           - runner: ubuntu-24.04-arm
-            manylinux: manylinux2014
             toolset: devtoolset-10
+            name: manylinux2014-aarch64
           - runner: ubuntu-24.04-arm
-            manylinux: manylinux_2_28
             toolset: gcc-toolset-14
+            name: manylinux_2_28-aarch64
           - runner: ubuntu-24.04-arm
-            manylinux: manylinux_2_34
             toolset: gcc-toolset-14
+            name: manylinux_2_34-aarch64
           # Native OS builds
           - runner: windows-latest
+            name: windows-x64
 
     steps:
       - name: Checkout repository
@@ -79,40 +80,26 @@ jobs:
         run: |
           if [[ "${{ matrix.runner }}" == *"-arm"* || "${{ matrix.runner }}" == *"arm64" ]]; then
             ARCH="aarch64"
-            TARGET_CPU="ARMV8"
           elif [[ "${{ matrix.runner }}" == windows-* ]]; then
             ARCH="x64"
-            TARGET_CPU="NEHALEM"
           else
             ARCH="x86_64"
-            TARGET_CPU="NEHALEM"
-          fi
-          if [[ -n "${{ matrix.manylinux }}" ]]; then
-            PLATFORM="${{ matrix.manylinux }}"
-          elif [[ "${{ matrix.runner }}" == windows-* ]]; then
-            PLATFORM="windows"
-          else
-            PLATFORM="${{ matrix.runner }}"
           fi
 
           echo "arch=$ARCH" >> $GITHUB_OUTPUT
-          echo "target_cpu=$TARGET_CPU" >> $GITHUB_OUTPUT
-          echo "platform=$PLATFORM" >> $GITHUB_OUTPUT
-          echo "Building for $PLATFORM ($ARCH) with target $TARGET_CPU"
+          echo "Building ${{ matrix.name }} ($ARCH)"
 
       - name: Set up build environment
         uses: ./.github/actions/setup-build-env
         with:
-          is-manylinux: ${{ matrix.manylinux != '' }}
+          is-manylinux: ${{ contains(matrix.name, 'manylinux') }}
 
       - name: Build OpenBLAS (native)
-        if: ${{ !matrix.manylinux }}
+        if: ${{ !contains(matrix.name, 'manylinux') }}
         shell: bash
         env:
           OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
-          TARGET_CPU: ${{ steps.vars.outputs.target_cpu }}
           ARCH: ${{ steps.vars.outputs.arch }}
-          PLATFORM: ${{ steps.vars.outputs.platform }}
         run: |
           chmod +x scripts/build-openblas.sh
           ./scripts/build-openblas.sh
@@ -120,16 +107,14 @@ jobs:
           echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
 
       - name: Build OpenBLAS (manylinux)
-        if: ${{ matrix.manylinux }}
+        if: ${{ contains(matrix.name, 'manylinux') }}
         shell: bash
         env:
           OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
-          TARGET_CPU: ${{ steps.vars.outputs.target_cpu }}
           ARCH: ${{ steps.vars.outputs.arch }}
-          PLATFORM: ${{ steps.vars.outputs.platform }}
         run: |
           docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
-            quay.io/pypa/${{ matrix.manylinux }}_${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64' || 'x86_64' }} \
+            quay.io/pypa/${{ matrix.name }} \
             bash -c "source /opt/rh/${{ matrix.toolset }}/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
 
           echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
@@ -137,8 +122,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: openblas-${{ needs.check-version.outputs.openblas-version }}-${{ steps.vars.outputs.platform
-            }}-${{ steps.vars.outputs.arch }}
+          name: openblas-${{ needs.check-version.outputs.openblas-version }}-${{ matrix.name }}
           path: install/
           if-no-files-found: error
           compression-level: 9
