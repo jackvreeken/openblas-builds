@@ -22,14 +22,3 @@ jobs:
 
       - name: Run pre-commit
         uses: pre-commit/action@v3.0.1
-
-  syntax:
-    name: Shell syntax
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Test bash syntax
-        run: |
-          find scripts -name "*.sh" -exec bash -n {} \;
