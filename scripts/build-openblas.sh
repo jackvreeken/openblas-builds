@@ -47,10 +47,9 @@ fetch_and_checkout() {
 configure_and_build() {
   local install_prefix="${1:-install}"
 
-  mkdir -p "${BUILD_DIR}"
-  cd "${BUILD_DIR}"
-
   local cmake_args=(
+    -S OpenBLAS
+    -B "${BUILD_DIR}"
     -DDYNAMIC_ARCH="${DYNAMIC_ARCH}"
     -DTARGET="${TARGET_CPU}"
     -DCMAKE_BUILD_TYPE=Release
@@ -92,19 +91,12 @@ configure_and_build() {
     )
   fi
 
-  echo "Running CMake configuration..."
+  echo "Running CMake configuration and build..."
   echo "CMake args: ${cmake_args[*]}"
-  cmake ../OpenBLAS "${cmake_args[@]}"
+  cmake "${cmake_args[@]}"
 
-  echo "Building OpenBLAS..."
-  if [[ "${PLATFORM}" == "windows" ]]; then
-    mingw32-make -j"$(nproc)"
-  else
-    make -j"$(nproc)"
-  fi
-
-  echo "Installing OpenBLAS..."
-  cmake --install . --prefix "${install_prefix}"
+  echo "Building and installing OpenBLAS..."
+  cmake --build "${BUILD_DIR}" --parallel "$(nproc)" --target install
 
   echo "Build completed successfully!"
   echo "Installation directory: ${install_prefix}"
@@ -132,7 +124,7 @@ main() {
         ;;
       -h|--help)
         echo "Usage: $0 [--prefix PATH]"
-        echo "  --prefix PATH    Install prefix (default: build/install)"
+        echo "  --prefix PATH    Install prefix (default: install)"
         echo "Environment variables:"
         echo "  OPENBLAS_VERSION  OpenBLAS version (default: latest)"
         echo "  TARGET_CPU        Target CPU (default: NEHALEM)"
@@ -162,7 +154,7 @@ main() {
     echo "Latest version found: ${OPENBLAS_VERSION}"
   fi
 
-  local install_prefix="${prefix:-${BUILD_DIR}/install}"
+  local install_prefix="${prefix:-install}"
 
   fetch_and_checkout "${OPENBLAS_VERSION}"
   configure_and_build "${install_prefix}"

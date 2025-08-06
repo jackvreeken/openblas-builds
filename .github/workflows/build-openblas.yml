@@ -50,16 +50,22 @@ jobs:
           # Linux manylinux builds
           - runner: ubuntu-latest
             manylinux: manylinux2014
+            toolset: devtoolset-10
           - runner: ubuntu-latest
             manylinux: manylinux_2_28
+            toolset: gcc-toolset-14
           - runner: ubuntu-latest
             manylinux: manylinux_2_34
+            toolset: gcc-toolset-14
           - runner: ubuntu-24.04-arm
             manylinux: manylinux2014
+            toolset: devtoolset-10
           - runner: ubuntu-24.04-arm
             manylinux: manylinux_2_28
+            toolset: gcc-toolset-14
           - runner: ubuntu-24.04-arm
             manylinux: manylinux_2_34
+            toolset: gcc-toolset-14
           # Native OS builds
           - runner: windows-latest
 
@@ -124,7 +130,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
             quay.io/pypa/${{ matrix.manylinux }}_${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64' || 'x86_64' }} \
-            bash -c "source /opt/rh/gcc-toolset-14/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
+            bash -c "source /opt/rh/${{ matrix.toolset }}/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
 
           echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
 
