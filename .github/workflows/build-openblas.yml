@@ -1,0 +1,190 @@
+---
+name: Build OpenBLAS
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  schedule:
+    # Run weekly on Fridays at 02:00 UTC to check for new OpenBLAS releases
+    - cron: 0 2 * * 5
+  workflow_dispatch:
+    inputs:
+      openblas_version:
+        description: OpenBLAS version to build (e.g., v0.3.30, or leave empty for latest)
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      already_built: ${{ steps.check.outputs.already_built }}
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get latest OpenBLAS version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        id: version
+        run: |
+          VERSION=$(gh release list --repo OpenMathLib/OpenBLAS --limit 1 --exclude-pre-releases --json tagName --jq '.[0].tagName')
+          COMMIT=$(git ls-remote https://github.com/OpenMathLib/OpenBLAS.git "refs/tags/$VERSION" | cut -f1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "Latest version found: $VERSION, commit: $COMMIT"
+
+      - name: Check if any build needed
+        id: check
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Found existing release for $VERSION"
+            echo "already_built=true" >> $GITHUB_OUTPUT
+          else
+            echo "No release found for $VERSION"
+            echo "already_built=false" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    needs: check
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.check.outputs.already_built ==
+      'false')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux manylinux builds
+          - runner: ubuntu-latest
+            toolset: devtoolset-10
+            name: manylinux2014_x86_64
+          - runner: ubuntu-latest
+            toolset: gcc-toolset-14
+            name: manylinux_2_28_x86_64
+          #  Neoverse not supported by GCC 10, so we skip manylinux2014_aarch64
+          - runner: ubuntu-24.04-arm
+            toolset: gcc-toolset-14
+            name: manylinux_2_28_aarch64
+          # musllinux builds
+          - runner: ubuntu-latest
+            name: musllinux_1_2_x86_64
+          - runner: ubuntu-24.04-arm
+            name: musllinux_1_2_aarch64
+          # Windows builds
+          - runner: windows-latest
+            name: windows-x64
+          # macOS builds
+          - runner: macos-14
+            name: macos-14-arm64
+          - runner: macos-15
+            name: macos-15-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get OpenBLAS version for build
+        id: version
+        shell: bash
+        run: |
+          OPENBLAS_VERSION=${{ inputs.openblas_version }}
+          if [[ -z "$OPENBLAS_VERSION" ]]; then
+            echo "No OpenBLAS version provided, using latest version"
+            OPENBLAS_VERSION=${{ needs.check.outputs.version }}
+          else
+            echo "Using provided OpenBLAS version: $OPENBLAS_VERSION"
+          fi
+          echo "OPENBLAS_VERSION=$OPENBLAS_VERSION" >> $GITHUB_ENV
+          echo "version=$OPENBLAS_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Set up build environment (for native runners)
+        uses: ./.github/actions/setup-build-env
+
+      - name: Build OpenBLAS (Windows)
+        if: contains(matrix.runner, 'windows')
+        shell: msys2 {0}
+        run: |
+          chmod +x scripts/build-openblas.sh
+          ./scripts/build-openblas.sh
+
+      - name: Build OpenBLAS (macOS)
+        if: contains(matrix.runner, 'macos')
+        shell: bash
+        run: |
+          chmod +x scripts/build-openblas.sh
+          ./scripts/build-openblas.sh
+
+      - name: Build OpenBLAS (manylinux)
+        if: contains(matrix.name, 'manylinux')
+        shell: bash
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
+            quay.io/pypa/${{ matrix.name }} \
+            bash -c "yum install -y ninja-build && source /opt/rh/${{ matrix.toolset }}/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
+
+      - name: Build OpenBLAS (musllinux)
+        if: contains(matrix.name, 'musllinux')
+        shell: bash
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
+            quay.io/pypa/${{ matrix.name }} \
+            bash -c "apk add --no-cache ninja && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh --static-only"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: openblas-${{ steps.version.outputs.version }}-${{ matrix.name }}
+          path: install/
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 30
+
+  release:
+    name: Create Release
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    if: |
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) &&
+      (needs.check.result == 'success' || needs.check.result == 'skipped') && needs.build.result == 'success'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release archives
+        shell: bash
+        run: |
+          cd artifacts
+          for dir in openblas-*; do
+            if [[ "$dir" == *"windows"* ]]; then
+              (cd "$dir" && zip -r "../${dir}.zip" *)
+            else
+              (cd "$dir" && tar -czf "../${dir}.tar.gz" *)
+            fi
+          done
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.build.outputs.version }}
+          name: OpenBLAS ${{ needs.build.outputs.version }}
+          files: artifacts/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

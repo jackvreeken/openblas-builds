@@ -1,0 +1,25 @@
+---
+name: Setup Build Environment
+description: Install build dependencies for OpenBLAS compilation
+runs:
+  using: composite
+  steps:
+    - name: Setup MSYS2 on Windows
+      if: runner.os == 'Windows'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: UCRT64
+        update: true
+        install: >-
+          base-devel
+          git
+          mingw-w64-ucrt-x86_64-toolchain
+          mingw-w64-ucrt-x86_64-cmake
+          mingw-w64-ucrt-x86_64-ninja
+
+    - name: Setup macOS build environment
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        # Use system clang + install only gfortran
+        brew install gfortran
