@@ -83,14 +83,6 @@ configure_and_build() {
       ;;
   esac
 
-  if [[ "${ARCH}" == "aarch64" && "$(uname -m)" != "aarch64" ]]; then
-    cmake_args+=(
-      -DCMAKE_SYSTEM_NAME=Linux
-      -DCMAKE_SYSTEM_PROCESSOR=aarch64
-      -DCMAKE_CROSSCOMPILING=TRUE
-    )
-  fi
-
   echo "Running CMake configuration and build..."
   echo "CMake args: ${cmake_args[*]}"
   cmake "${cmake_args[@]}"
