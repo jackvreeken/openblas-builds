@@ -5,19 +5,20 @@
 The build system uses a matrix strategy with derived variables to minimize code duplication:
 
 - **Composite action** (`.github/actions/setup-build-env`) handles dependency installation
-- **Reusable workflow** (`.github/workflows/check-openblas.yml`) manages version detection
+- **Reusable workflow** (`.github/workflows/check-openblas.yml`) manages
+  version detection
 - **Unified build script** (`scripts/build-openblas.sh`) works across all platforms
 - **Smart builds** skip compilation if version/commit hasn't changed
 
 ## Platform Matrix
 
-| Runner | Manylinux | Architecture | Target CPU |
-|--------|-----------|--------------|------------|
-| ubuntu-latest | manylinux2014, manylinux_2_28, manylinux_2_34 | x86_64 | NEHALEM |
-| ubuntu-24.04-arm | manylinux2014, manylinux_2_28, manylinux_2_34 | aarch64 | ARMV8 |
-| windows-latest | - | x64 | NEHALEM |
-| macos-13, macos-14, macos-15 | - | x86_64 | NEHALEM |
-| macos-14-arm64, macos-15-arm64 | - | arm64 | ARMV8 |
+| Runner                         | Manylinux                                         | Architecture | Target CPU |
+| ------------------------------ | ------------------------------------------------- | ------------ | ---------- |
+| ubuntu-latest                  | manylinux2014, manylinux_2_28,<br/>manylinux_2_34 | x86_64       | NEHALEM    |
+| ubuntu-24.04-arm               | manylinux2014, manylinux_2_28,<br/>manylinux_2_34 | aarch64      | ARMV8      |
+| windows-latest                 | -                                                 | x64          | NEHALEM    |
+| macos-13, macos-14, macos-15   | -                                                 | x86_64       | NEHALEM    |
+| macos-14-arm64, macos-15-arm64 | -                                                 | arm64        | ARMV8      |
 
 ## Build Configuration
 
@@ -84,9 +85,9 @@ TARGET_CPU=CORE2 DYNAMIC_ARCH=FALSE ./scripts/build-openblas.sh
 ### Version Detection
 
 1. Check input version or fetch latest via GitHub API
-2. Get commit hash for the version tag
-3. Compare with existing nightly release
-4. Skip build if version/commit unchanged (scheduled builds only)
+1. Get commit hash for the version tag
+1. Compare with existing nightly release
+1. Skip build if version/commit unchanged (scheduled builds only)
 
 ### Release Strategy
 
@@ -96,15 +97,29 @@ TARGET_CPU=CORE2 DYNAMIC_ARCH=FALSE ./scripts/build-openblas.sh
 
 ## Contributing
 
+### Development Setup
+
+```bash
+# Install pre-commit hooks
+pip install pre-commit
+pre-commit install
+
+# Run checks manually
+pre-commit run --all-files
+```
+
 ### Code Style
 
-- ShellCheck compliant scripts
-- Bash strict mode: `set -euo pipefail`
-- Functions under 40 lines
-- Semantic commit messages
+- **Pre-commit hooks**: Automated formatting, linting, and validation
+- **ShellCheck**: All shell scripts must pass with error severity
+- **YAML/Markdown**: Consistent formatting with yamllint/markdownlint
+- **Bash strict mode**: `set -euo pipefail` with proper error handling
+- **Functions**: Keep under 40 lines with single responsibility
+- **Commit messages**: Use conventional commits format
 
 ### Testing Checklist
 
+- [ ] Pre-commit hooks pass: `pre-commit run --all-files`
 - [ ] Local manylinux_2_34 x86_64 build succeeds
 - [ ] Artifact contains static and shared libraries
 - [ ] CMake config files are present

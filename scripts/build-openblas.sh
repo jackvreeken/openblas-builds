@@ -8,7 +8,7 @@ IFS=$'\n\t'
 get_latest_openblas_version() {
   local latest_version
   latest_version=$(gh release list --repo OpenMathLib/OpenBLAS --limit 1 --exclude-pre-releases --json tagName --jq '.[0].tagName' 2>/dev/null)
-  
+
   if [[ -z "$latest_version" ]]; then
     echo "Error: Could not fetch latest OpenBLAS version from GitHub" >&2
     echo "This could be due to network issues or GitHub API limits" >&2
@@ -46,7 +46,7 @@ fetch_and_checkout() {
 
 configure_and_build() {
   local install_prefix="${1:-${BUILD_DIR}/install}"
-  
+
   mkdir -p "${BUILD_DIR}"
   cd "${BUILD_DIR}"
 
@@ -108,7 +108,7 @@ configure_and_build() {
 
   echo "Build completed successfully!"
   echo "Installation directory: ${install_prefix}"
-  
+
   echo "Verifying build..."
   ls -la "${install_prefix}"/lib*/
 
@@ -122,7 +122,7 @@ configure_and_build() {
 
 main() {
   local prefix=""
-  
+
   # Parse CLI arguments
   while [[ $# -gt 0 ]]; do
     case $1 in

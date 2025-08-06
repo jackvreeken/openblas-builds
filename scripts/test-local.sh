@@ -7,7 +7,7 @@ IFS=$'\n\t'
 
 MANYLINUX_VERSION="${1:-manylinux_2_34}"
 ARCH="${2:-x86_64}"
-OPENBLAS_VERSION="${OPENBLAS_VERSION:-}"  # Let build script determine latest
+OPENBLAS_VERSION="${OPENBLAS_VERSION:-}"
 
 echo "Testing OpenBLAS build locally with ${MANYLINUX_VERSION}_${ARCH}"
 
@@ -74,28 +74,14 @@ docker run --rm \
   -e BUILD_DIR="test-build" \
   -e DYNAMIC_ARCH="${DYNAMIC_ARCH:-OFF}" \
   "${CONTAINER_IMAGE}" \
-  bash -c "
-    # Install dependencies
-    if command -v yum &> /dev/null; then
-      yum update -y
-      yum install -y git cmake3 make gcc-c++ gfortran
-      ln -sf /usr/bin/cmake3 /usr/bin/cmake || true
-    elif command -v apt-get &> /dev/null; then
-      apt-get update
-      apt-get install -y git cmake build-essential gfortran
-    fi
-    
-    # Run the build script
-    chmod +x scripts/build-openblas.sh
-    ./scripts/build-openblas.sh
-  "
+  bash scripts/build-openblas.sh
 
 # Check if build was successful
 if [[ -d "test-build/install" ]]; then
   echo "✅ Build successful!"
   echo "Built libraries:"
   find test-build/install -name "*.so*" -o -name "*.a" | head -10
-  
+
   echo ""
   echo "Build artifacts location: test-build/install"
   echo "To clean up: rm -rf test-build OpenBLAS"

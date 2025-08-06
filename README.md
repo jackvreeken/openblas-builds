@@ -1,14 +1,15 @@
 # OpenBLAS Multi-Platform Builds
 
-Automated weekly builds of [OpenBLAS](https://www.openblas.net/) for multiple platforms with runtime CPU detection and native ARM compilation.
+Automated weekly builds of [OpenBLAS](https://www.openblas.net/) for multiple
+platforms with runtime CPU detection and native ARM compilation.
 
 ## Supported Platforms
 
-| Platform | Architectures | Container/Runner |
-|----------|---------------|------------------|
-| manylinux2014, manylinux_2_28, manylinux_2_34 | x86_64, aarch64 | PyPA containers |
-| macOS 13, 14, 15 | x86_64, arm64 | Native runners |
-| Windows | x64 | Native runners |
+| Platform                                      | Architectures   | Container/Runner |
+| --------------------------------------------- | --------------- | ---------------- |
+| manylinux2014, manylinux_2_28, manylinux_2_34 | x86_64, aarch64 | PyPA containers  |
+| macOS 13, 14, 15                              | x86_64, arm64   | Native runners   |
+| Windows                                       | x64             | Native runners   |
 
 ## Why This Exists
 
