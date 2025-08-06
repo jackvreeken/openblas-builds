@@ -28,74 +28,16 @@ env:
 
 jobs:
   check-version:
-    name: Check if build is needed
-    runs-on: ubuntu-latest
-    outputs:
-      openblas-version: ${{ steps.version.outputs.version }}
-      openblas-commit: ${{ steps.version.outputs.commit }}
-      should-build: ${{ steps.version.outputs.should-build }}
-      is-nightly: ${{ env.IS_NIGHTLY }}
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      
-    - name: Get OpenBLAS version and check if build needed
-      id: version
-      run: |
-        # Get latest OpenBLAS version
-        if [[ -n "${{ env.OPENBLAS_VERSION }}" ]]; then
-          VERSION="${{ env.OPENBLAS_VERSION }}"
-          echo "Using specified version: $VERSION"
-        else
-          echo "Fetching latest OpenBLAS version..."
-          VERSION=$(git ls-remote --tags https://github.com/OpenMathLib/OpenBLAS.git | \
-            grep -E 'refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$' | \
-            sed 's/.*refs\/tags\///' | \
-            sort -V | \
-            tail -1)
-          
-          if [[ -z "$VERSION" ]]; then
-            echo "Error: Could not fetch latest OpenBLAS version"
-            exit 1
-          fi
-          echo "Latest version found: $VERSION"
-        fi
-        
-        # Get commit hash for the version
-        COMMIT=$(git ls-remote https://github.com/OpenMathLib/OpenBLAS.git "refs/tags/$VERSION" | cut -f1)
-        echo "Commit for $VERSION: $COMMIT"
-        
-        # Set outputs
-        echo "version=$VERSION" >> $GITHUB_OUTPUT
-        echo "commit=$COMMIT" >> $GITHUB_OUTPUT
-        
-        # Check if we should build (always build for manual dispatch or push events)
-        SHOULD_BUILD="true"
-        
-        if [[ "${{ github.event_name }}" == "schedule" ]]; then
-          # For scheduled builds, check if this version/commit was already built
-          echo "Checking if version $VERSION (commit $COMMIT) was already built..."
-          
-          # Check if a release exists with this exact version and commit
-          if gh release view "nightly" --json body,tagName 2>/dev/null | \
-             jq -r '.body' | grep -q "Commit: $COMMIT"; then
-            echo "Version $VERSION with commit $COMMIT already built in nightly release"
-            SHOULD_BUILD="false"
-          else
-            echo "Version $VERSION with commit $COMMIT not yet built"
-            SHOULD_BUILD="true"
-          fi
-        fi
-        
-        echo "should-build=$SHOULD_BUILD" >> $GITHUB_OUTPUT
-        echo "Build needed: $SHOULD_BUILD"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    uses: ./.github/workflows/check-openblas.yml
+    with:
+      version: ${{ inputs.openblas_version || '' }}
+      is-nightly: ${{ inputs.is_nightly || github.event_name == 'schedule' }}
+    secrets: inherit
 
   build:
-    name: Build ${{ matrix.platform || matrix.os }} ${{ matrix.arch }}
-    runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
+    name: Build ${{ matrix.runner }} ${{ matrix.manylinux || 'native' }}
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.manylinux && format('quay.io/pypa/{0}_{1}', matrix.manylinux, matrix.runner == 'ubuntu-24.04-arm' && 'aarch64' || 'x86_64') }}
     needs: check-version
     if: needs.check-version.outputs.should-build == 'true'
     
@@ -104,105 +46,71 @@ jobs:
       matrix:
         include:
           # Linux manylinux builds
-          - os: ubuntu-latest
-            container: quay.io/pypa/manylinux2014_x86_64
-            arch: x86_64
-            platform: manylinux2014
-            target_cpu: NEHALEM
-          - os: ubuntu-latest
-            container: quay.io/pypa/manylinux_2_28_x86_64
-            arch: x86_64
-            platform: manylinux_2_28
-            target_cpu: NEHALEM
-          - os: ubuntu-latest
-            container: quay.io/pypa/manylinux_2_34_x86_64
-            arch: x86_64
-            platform: manylinux_2_34
-            target_cpu: NEHALEM
-          
-          # ARM builds on native runners
-          - os: ubuntu-24.04-arm
-            container: quay.io/pypa/manylinux2014_aarch64
-            arch: aarch64
-            platform: manylinux2014
-            target_cpu: ARMV8
-          - os: ubuntu-24.04-arm
-            container: quay.io/pypa/manylinux_2_28_aarch64
-            arch: aarch64
-            platform: manylinux_2_28
-            target_cpu: ARMV8
-          - os: ubuntu-24.04-arm
-            container: quay.io/pypa/manylinux_2_34_aarch64
-            arch: aarch64
-            platform: manylinux_2_34
-            target_cpu: ARMV8
-          
+          - runner: ubuntu-latest
+            manylinux: manylinux2014
+          - runner: ubuntu-latest
+            manylinux: manylinux_2_28
+          - runner: ubuntu-latest
+            manylinux: manylinux_2_34
+          - runner: ubuntu-24.04-arm
+            manylinux: manylinux2014
+          - runner: ubuntu-24.04-arm
+            manylinux: manylinux_2_28
+          - runner: ubuntu-24.04-arm
+            manylinux: manylinux_2_34
           # Native OS builds
-          - os: windows-latest
-            arch: x64
-            platform: windows
-            target_cpu: NEHALEM
-          
-          # macOS Intel builds
-          - os: macos-13
-            arch: x86_64
-            platform: macos-13
-            target_cpu: NEHALEM
-          - os: macos-14
-            arch: x86_64
-            platform: macos-14
-            target_cpu: NEHALEM
-          - os: macos-15
-            arch: x86_64
-            platform: macos-15
-            target_cpu: NEHALEM
-          
-          # macOS ARM builds
-          - os: macos-14-arm64
-            arch: arm64
-            platform: macos-14-arm64
-            target_cpu: ARMV8
-          - os: macos-15-arm64
-            arch: arm64
-            platform: macos-15-arm64
-            target_cpu: ARMV8
+          - runner: windows-latest
+          - runner: macos-13
+          - runner: macos-14
+          - runner: macos-15
+          - runner: macos-14-arm64
+          - runner: macos-15-arm64
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
     
-    - name: Set up build environment
-      shell: bash
+    - name: Set derived build variables
+      id: vars
       run: |
-        if [[ "${{ matrix.container }}" == *"manylinux"* ]]; then
-          # Install dependencies in manylinux container
-          if command -v yum &> /dev/null; then
-            yum update -y
-            yum install -y git cmake3 make gcc-c++ gfortran
-            ln -sf /usr/bin/cmake3 /usr/bin/cmake || true
-          elif command -v apt-get &> /dev/null; then
-            apt-get update
-            apt-get install -y git cmake build-essential gfortran
-          fi
-        elif [[ "$RUNNER_OS" == "macOS" ]]; then
-          # macOS setup
-          brew install cmake gfortran
-        elif [[ "$RUNNER_OS" == "Windows" ]]; then
-          # Windows setup - install dependencies via chocolatey
-          choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System'
-          # Use MSYS2 for gfortran
-          choco install msys2
-          C:\\tools\\msys64\\usr\\bin\\bash.exe -lc "pacman -S --noconfirm mingw-w64-x86_64-gcc-fortran"
-          echo "C:\\tools\\msys64\\mingw64\\bin" >> $GITHUB_PATH
+        # Determine architecture
+        if [[ "${{ matrix.runner }}" == *"-arm"* || "${{ matrix.runner }}" == *"arm64" ]]; then
+          ARCH="aarch64"
+          TARGET_CPU="ARMV8"
+        elif [[ "${{ matrix.runner }}" == windows-* ]]; then
+          ARCH="x64"
+          TARGET_CPU="NEHALEM"
+        else
+          ARCH="x86_64"
+          TARGET_CPU="NEHALEM"
         fi
+        
+        # Determine platform
+        if [[ -n "${{ matrix.manylinux }}" ]]; then
+          PLATFORM="${{ matrix.manylinux }}"
+        elif [[ "${{ matrix.runner }}" == windows-* ]]; then
+          PLATFORM="windows"
+        else
+          PLATFORM="${{ matrix.runner }}"
+        fi
+        
+        echo "arch=$ARCH" >> $GITHUB_OUTPUT
+        echo "target_cpu=$TARGET_CPU" >> $GITHUB_OUTPUT
+        echo "platform=$PLATFORM" >> $GITHUB_OUTPUT
+        echo "Building for $PLATFORM ($ARCH) with target $TARGET_CPU"
+    
+    - name: Set up build environment
+      uses: ./.github/actions/setup-build-env
+      with:
+        is-manylinux: ${{ matrix.manylinux != '' }}
 
     - name: Build OpenBLAS
       shell: bash
       env:
         OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
-        TARGET_CPU: ${{ matrix.target_cpu }}
-        ARCH: ${{ matrix.arch }}
-        PLATFORM: ${{ matrix.platform }}
+        TARGET_CPU: ${{ steps.vars.outputs.target_cpu }}
+        ARCH: ${{ steps.vars.outputs.arch }}
+        PLATFORM: ${{ steps.vars.outputs.platform }}
       run: |
         chmod +x scripts/build-openblas.sh
         ./scripts/build-openblas.sh
@@ -227,15 +135,15 @@ jobs:
         cd artifacts
         VERSION_TAG="${{ needs.check-version.outputs.openblas-version }}"
         if [[ "$RUNNER_OS" == "Windows" ]]; then
-          7z a "../openblas-${VERSION_TAG}-${{ matrix.platform }}-${{ matrix.arch }}.zip" .
+          7z a "../openblas-${VERSION_TAG}-${{ steps.vars.outputs.platform }}-${{ steps.vars.outputs.arch }}.zip" .
         else
-          tar -czf "../openblas-${VERSION_TAG}-${{ matrix.platform }}-${{ matrix.arch }}.tar.gz" .
+          tar -czf "../openblas-${VERSION_TAG}-${{ steps.vars.outputs.platform }}-${{ steps.vars.outputs.arch }}.tar.gz" .
         fi
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: openblas-${{ needs.check-version.outputs.openblas-version }}-${{ matrix.platform }}-${{ matrix.arch }}
+        name: openblas-${{ needs.check-version.outputs.openblas-version }}-${{ steps.vars.outputs.platform }}-${{ steps.vars.outputs.arch }}
         path: |
           *.tar.gz
           *.zip
@@ -246,7 +154,6 @@ jobs:
     needs: [check-version, build]
     runs-on: ubuntu-latest
     if: |
-      always() && 
       needs.check-version.result == 'success' &&
       (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.check-version.outputs.is-nightly == 'true')) &&
       (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))

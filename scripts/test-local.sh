@@ -1,5 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
+IFS=$'\n\t'
 
 # Local testing script for manylinux builds
 # Usage: ./scripts/test-local.sh [manylinux_version] [arch]
