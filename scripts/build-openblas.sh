@@ -63,9 +63,9 @@ configure_and_build() {
   case "${PLATFORM}" in
     windows)
       cmake_args+=(
-        -G "MinGW Makefiles"
-        -DCMAKE_C_COMPILER=gcc
-        -DCMAKE_Fortran_COMPILER=gfortran
+        -G "Ninja"
+        -DCMAKE_C_COMPILER=cl
+        -DCMAKE_Fortran_COMPILER=ifx
       )
       ;;
     macos*)
