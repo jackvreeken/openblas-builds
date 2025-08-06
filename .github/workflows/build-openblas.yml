@@ -1,10 +1,7 @@
 ---
 name: Build OpenBLAS
 
-# YAML anchors for repeated values
-x-openblas-version: &openblas-version ${{ needs.check-version.outputs.openblas-version }}
-x-artifact-name: &artifact-name openblas-${{ needs.check-version.outputs.openblas-version }}-${{ steps.vars.outputs.platform
-  }}-${{ steps.vars.outputs.arch }}
+# Build configuration - see individual steps for variable usage
 
 on:
   push:
@@ -112,7 +109,7 @@ jobs:
       - name: Build OpenBLAS
         shell: bash
         env:
-          OPENBLAS_VERSION: *openblas-version
+          OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
           TARGET_CPU: ${{ steps.vars.outputs.target_cpu }}
           ARCH: ${{ steps.vars.outputs.arch }}
           PLATFORM: ${{ steps.vars.outputs.platform }}
@@ -125,7 +122,8 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: *artifact-name
+          name: openblas-${{ needs.check-version.outputs.openblas-version }}-${{ steps.vars.outputs.platform
+            }}-${{ steps.vars.outputs.arch }}
           path: build/install/
           if-no-files-found: error
           compression-level: 9
