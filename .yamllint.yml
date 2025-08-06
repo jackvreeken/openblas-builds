@@ -2,9 +2,7 @@
 extends: default
 
 rules:
-    line-length:
-        max: 300 # Allow very long lines for GitHub Actions expressions
-    truthy: disable  # Conflicts with yamlfmt formatting
-    comments-indentation: disable # Allow flexible comment indentation
-    indentation:
-        spaces: 2
+  # 80 chars should be enough, but don't fail if a line is longer
+  line-length:
+    max: 120
+    level: warning

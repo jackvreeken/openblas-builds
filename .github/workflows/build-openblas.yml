@@ -3,197 +3,198 @@ name: Build OpenBLAS
 
 # YAML anchors for repeated values
 x-openblas-version: &openblas-version ${{ needs.check-version.outputs.openblas-version }}
-x-artifact-name: &artifact-name openblas-${{ needs.check-version.outputs.openblas-version }}-${{ steps.vars.outputs.platform }}-${{ steps.vars.outputs.arch
-    }}
+x-artifact-name: &artifact-name openblas-${{ needs.check-version.outputs.openblas-version }}-${{ steps.vars.outputs.platform
+  }}-${{ steps.vars.outputs.arch }}
 
 on:
-    push:
-        branches: [main]
-    pull_request:
-        branches: [main]
-    schedule:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
     # Run weekly on Sundays at 02:00 UTC to check for new OpenBLAS releases
-        - cron: 0 2 * * 0
-    workflow_dispatch:
-        inputs:
-            openblas_version:
-                description: OpenBLAS version to build (e.g., v0.3.30, or leave empty for latest)
-                required: false
-                default: ''
-                type: string
-            is_nightly:
-                description: Create nightly release (overwrites previous nightly)
-                required: false
-                default: false
-                type: boolean
+    - cron: 0 2 * * 0
+  workflow_dispatch:
+    inputs:
+      openblas_version:
+        description: OpenBLAS version to build (e.g., v0.3.30, or leave empty for latest)
+        required: false
+        default: ''
+        type: string
+      is_nightly:
+        description: Create nightly release (overwrites previous nightly)
+        required: false
+        default: false
+        type: boolean
 
 env:
   # Use input version if provided, otherwise let build script fetch latest
-    OPENBLAS_VERSION: ${{ inputs.openblas_version || '' }}
-    IS_NIGHTLY: ${{ inputs.is_nightly || github.event_name == 'schedule' }}
+  OPENBLAS_VERSION: ${{ inputs.openblas_version || '' }}
+  IS_NIGHTLY: ${{ inputs.is_nightly || github.event_name == 'schedule' }}
 
 jobs:
-    check-version:
-        uses: ./.github/workflows/check-openblas.yml
-        with:
-            version: ${{ inputs.openblas_version || '' }}
-            is-nightly: ${{ inputs.is_nightly || github.event_name == 'schedule' }}
-        secrets: inherit
+  check-version:
+    uses: ./.github/workflows/check-openblas.yml
+    with:
+      version: ${{ inputs.openblas_version || '' }}
+      is-nightly: ${{ inputs.is_nightly || github.event_name == 'schedule' }}
+    secrets: inherit
 
-    build:
-        name: Build ${{ matrix.runner }} ${{ matrix.manylinux || 'native' }}
-        runs-on: ${{ matrix.runner }}
-        container: >-
-            ${{ matrix.manylinux && format('quay.io/pypa/{0}_{1}',
-            matrix.manylinux, matrix.runner == 'ubuntu-24.04-arm' && 'aarch64' || 'x86_64') }}
-        needs: check-version
-        if: needs.check-version.outputs.should-build == 'true'
+  build:
+    name: Build ${{ matrix.runner }} ${{ matrix.manylinux || 'native' }}
+    runs-on: ${{ matrix.runner }}
+    container: >-
+      ${{ matrix.manylinux && format('quay.io/pypa/{0}_{1}',
+      matrix.manylinux, matrix.runner == 'ubuntu-24.04-arm' && 'aarch64' || 'x86_64') }}
+    needs: check-version
+    if: needs.check-version.outputs.should-build == 'true'
 
-        strategy:
-            fail-fast: false
-            matrix:
-                include:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
           # Linux manylinux builds
-                    - runner: ubuntu-latest
-                      manylinux: manylinux2014
-                    - runner: ubuntu-latest
-                      manylinux: manylinux_2_28
-                    - runner: ubuntu-latest
-                      manylinux: manylinux_2_34
-                    - runner: ubuntu-24.04-arm
-                      manylinux: manylinux2014
-                    - runner: ubuntu-24.04-arm
-                      manylinux: manylinux_2_28
-                    - runner: ubuntu-24.04-arm
-                      manylinux: manylinux_2_34
+          - runner: ubuntu-latest
+            manylinux: manylinux2014
+          - runner: ubuntu-latest
+            manylinux: manylinux_2_28
+          - runner: ubuntu-latest
+            manylinux: manylinux_2_34
+          - runner: ubuntu-24.04-arm
+            manylinux: manylinux2014
+          - runner: ubuntu-24.04-arm
+            manylinux: manylinux_2_28
+          - runner: ubuntu-24.04-arm
+            manylinux: manylinux_2_34
           # Native OS builds
-                    - runner: windows-latest
-                    - runner: macos-13
-                    - runner: macos-14
-                    - runner: macos-15
-                    - runner: macos-14-arm64
-                    - runner: macos-15-arm64
+          - runner: windows-latest
+          - runner: macos-13
+          - runner: macos-14
+          - runner: macos-15
+          - runner: macos-14-arm64
+          - runner: macos-15-arm64
 
-        steps:
-            - name: Checkout repository
-              uses: actions/checkout@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-            - name: Set derived build variables
-              id: vars
-              run: |
-                  if [[ "${{ matrix.runner }}" == *"-arm"* || "${{ matrix.runner }}" == *"arm64" ]]; then
-                    ARCH="aarch64"
-                    TARGET_CPU="ARMV8"
-                  elif [[ "${{ matrix.runner }}" == windows-* ]]; then
-                    ARCH="x64"
-                    TARGET_CPU="NEHALEM"
-                  else
-                    ARCH="x86_64"
-                    TARGET_CPU="NEHALEM"
-                  fi
-                  if [[ -n "${{ matrix.manylinux }}" ]]; then
-                    PLATFORM="${{ matrix.manylinux }}"
-                  elif [[ "${{ matrix.runner }}" == windows-* ]]; then
-                    PLATFORM="windows"
-                  else
-                    PLATFORM="${{ matrix.runner }}"
-                  fi
+      - name: Set derived build variables
+        id: vars
+        run: |
+          if [[ "${{ matrix.runner }}" == *"-arm"* || "${{ matrix.runner }}" == *"arm64" ]]; then
+            ARCH="aarch64"
+            TARGET_CPU="ARMV8"
+          elif [[ "${{ matrix.runner }}" == windows-* ]]; then
+            ARCH="x64"
+            TARGET_CPU="NEHALEM"
+          else
+            ARCH="x86_64"
+            TARGET_CPU="NEHALEM"
+          fi
+          if [[ -n "${{ matrix.manylinux }}" ]]; then
+            PLATFORM="${{ matrix.manylinux }}"
+          elif [[ "${{ matrix.runner }}" == windows-* ]]; then
+            PLATFORM="windows"
+          else
+            PLATFORM="${{ matrix.runner }}"
+          fi
 
-                  echo "arch=$ARCH" >> $GITHUB_OUTPUT
-                  echo "target_cpu=$TARGET_CPU" >> $GITHUB_OUTPUT
-                  echo "platform=$PLATFORM" >> $GITHUB_OUTPUT
-                  echo "Building for $PLATFORM ($ARCH) with target $TARGET_CPU"
+          echo "arch=$ARCH" >> $GITHUB_OUTPUT
+          echo "target_cpu=$TARGET_CPU" >> $GITHUB_OUTPUT
+          echo "platform=$PLATFORM" >> $GITHUB_OUTPUT
+          echo "Building for $PLATFORM ($ARCH) with target $TARGET_CPU"
 
-            - name: Set up build environment
-              uses: ./.github/actions/setup-build-env
-              with:
-                  is-manylinux: ${{ matrix.manylinux != '' }}
+      - name: Set up build environment
+        uses: ./.github/actions/setup-build-env
+        with:
+          is-manylinux: ${{ matrix.manylinux != '' }}
 
-            - name: Build OpenBLAS
-              shell: bash
-              env:
-                  OPENBLAS_VERSION: *openblas-version
-                  TARGET_CPU: ${{ steps.vars.outputs.target_cpu }}
-                  ARCH: ${{ steps.vars.outputs.arch }}
-                  PLATFORM: ${{ steps.vars.outputs.platform }}
-              run: |
-                  chmod +x scripts/build-openblas.sh
-                  ./scripts/build-openblas.sh
+      - name: Build OpenBLAS
+        shell: bash
+        env:
+          OPENBLAS_VERSION: *openblas-version
+          TARGET_CPU: ${{ steps.vars.outputs.target_cpu }}
+          ARCH: ${{ steps.vars.outputs.arch }}
+          PLATFORM: ${{ steps.vars.outputs.platform }}
+        run: |
+          chmod +x scripts/build-openblas.sh
+          ./scripts/build-openblas.sh
 
-                  echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
+          echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
 
-            - name: Upload artifacts
-              uses: actions/upload-artifact@v4
-              with:
-                  name: *artifact-name
-                  path: build/install/
-                  if-no-files-found: error
-                  compression-level: 9
-                  retention-days: 30
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: *artifact-name
+          path: build/install/
+          if-no-files-found: error
+          compression-level: 9
+          retention-days: 30
 
-    release:
-        name: Create Release
-        needs: [check-version, build]
-        runs-on: ubuntu-latest
-        if: |
-            needs.check-version.result == 'success' &&
-            (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.check-version.outputs.is-nightly == 'true')) &&
-            (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+  release:
+    name: Create Release
+    needs: [check-version, build]
+    runs-on: ubuntu-latest
+    if: |
+      needs.check-version.result == 'success' &&
+      (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.check-version.outputs.is-nightly == 'true')) &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
 
-        steps:
-            - name: Download all artifacts
-              if: needs.build.result == 'success'
-              uses: actions/download-artifact@v4
-              with:
-                  path: artifacts
+    steps:
+      - name: Download all artifacts
+        if: needs.build.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
 
-            - name: Create release archives
-              if: needs.build.result == 'success'
-              run: |
-                  cd artifacts
-                  for dir in openblas-*; do
-                    if [[ "$dir" == *"windows"* ]]; then
-                      (cd "$dir" && zip -r "../${dir}.zip" .)
-                    else
-                      tar -czf "${dir}.tar.gz" -C "$dir" .
-                    fi
-                  done
-                  ls -la *.{tar.gz,zip} 2>/dev/null || echo "No archives created"
+      - name: Create release archives
+        if: needs.build.result == 'success'
+        run: |
+          cd artifacts
+          for dir in openblas-*; do
+            if [[ "$dir" == *"windows"* ]]; then
+              (cd "$dir" && zip -r "../${dir}.zip" .)
+            else
+              tar -czf "${dir}.tar.gz" -C "$dir" .
+            fi
+          done
+          ls -la *.{tar.gz,zip} 2>/dev/null || echo "No archives created"
 
-            - name: Update nightly release assets
-              if: needs.check-version.outputs.is-nightly == 'true' && needs.build.result == 'success'
-              run: |
-                  if gh release view nightly >/dev/null 2>&1; then
-                    echo "Updating existing nightly release assets..."
-                    # Remove old assets but keep release
-                    gh release delete-asset nightly --yes $(gh release view nightly --json assets --jq '.assets[].name' | tr '\n' ' ') || true
-                  fi
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Update nightly release assets
+        if: needs.check-version.outputs.is-nightly == 'true' && needs.build.result == 'success'
+        run: |
+          if gh release view nightly >/dev/null 2>&1; then
+            echo "Updating existing nightly release assets..."
+            # Remove old assets but keep release
+            gh release delete-asset nightly --yes $(gh release view nightly --json assets --jq '.assets[].name' | tr '\n' ' ') || true
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-            - name: Create Release
-              uses: softprops/action-gh-release@v1
-              with:
-                  tag_name: ${{ needs.check-version.outputs.is-nightly == 'true' && 'nightly' || format('{0}-build-{1}', needs.check-version.outputs.openblas-version,
-                      github.run_number) }}
-                  name: ${{ needs.check-version.outputs.is-nightly == 'true' && format('OpenBLAS {0} Nightly Build', needs.check-version.outputs.openblas-version)
-                      || format('OpenBLAS {0} Build {1}', needs.check-version.outputs.openblas-version, github.run_number) }}
-                  body: |
-                      ${{ needs.check-version.outputs.is-nightly == 'true' && format('Automated nightly build of OpenBLAS {0}
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.check-version.outputs.is-nightly == 'true' && 'nightly' || format('{0}-build-{1}',
+            needs.check-version.outputs.openblas-version, github.run_number) }}
+          name: ${{ needs.check-version.outputs.is-nightly == 'true' && format('OpenBLAS {0} Nightly Build',
+            needs.check-version.outputs.openblas-version) || format('OpenBLAS {0} Build {1}', needs.check-version.outputs.openblas-version,
+            github.run_number) }}
+          body: |
+            ${{ needs.check-version.outputs.is-nightly == 'true' && format('Automated nightly build of OpenBLAS {0}
 
-                      **Version:** {0}
-                      **Commit:** {1}
-                      **Built:** {2}
+            **Version:** {0}
+            **Commit:** {1}
+            **Built:** {2}
 
-                      This release is updated weekly and contains the latest stable version of OpenBLAS compiled for multiple platforms.
+            This release is updated weekly and contains the latest stable version of OpenBLAS compiled for multiple platforms.
 
-                      **Note:** This is a nightly build that gets overwritten weekly. For stable releases, use the tagged releases.', needs.check-version.outputs.openblas-version, needs.check-version.outputs.openblas-commit, github.run_id) || format('Build of OpenBLAS {0} for multiple platforms
+            **Note:** This is a nightly build that gets overwritten weekly. For stable releases, use the tagged releases.', needs.check-version.outputs.openblas-version, needs.check-version.outputs.openblas-commit, github.run_id) || format('Build of OpenBLAS {0} for multiple platforms
 
-                      **Version:** {0}
-                      **Commit:** {1}
-                      **Build ID:** {2}', needs.check-version.outputs.openblas-version, needs.check-version.outputs.openblas-commit, github.run_number) }}
-                  draft: false
-                  prerelease: ${{ needs.check-version.outputs.is-nightly == 'true' }}
-                  files: ${{ needs.build.result == 'success' && 'artifacts/*.{tar.gz,zip}' || '' }}
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            **Version:** {0}
+            **Commit:** {1}
+            **Build ID:** {2}', needs.check-version.outputs.openblas-version, needs.check-version.outputs.openblas-commit, github.run_number) }}
+          draft: false
+          prerelease: ${{ needs.check-version.outputs.is-nightly == 'true' }}
+          files: ${{ needs.build.result == 'success' && 'artifacts/*.{tar.gz,zip}' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

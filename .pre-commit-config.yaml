@@ -1,42 +1,42 @@
 ---
 repos:
-    - repo: https://github.com/pre-commit/pre-commit-hooks
-      rev: v5.0.0
-      hooks:
-          - id: trailing-whitespace
-          - id: end-of-file-fixer
-          - id: check-yaml
-          - id: check-shebang-scripts-are-executable
-          - id: check-executables-have-shebangs
-          - id: detect-private-key
-          - id: check-case-conflict
-          - id: check-merge-conflict
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-shebang-scripts-are-executable
+      - id: check-executables-have-shebangs
+      - id: detect-private-key
+      - id: check-case-conflict
+      - id: check-merge-conflict
 
-    - repo: https://github.com/jumanjihouse/pre-commit-hooks
-      rev: 3.0.0
-      hooks:
-          - id: shellcheck
-            args: [--severity=error]
-          - id: script-must-have-extension
-            exclude: ^\.github/
-          - id: forbid-binary
-            exclude: ^docs/.*\.(png|jpg|jpeg|gif)$
+  - repo: https://github.com/jumanjihouse/pre-commit-hooks
+    rev: 3.0.0
+    hooks:
+      - id: shellcheck
+        args: [--severity=error]
+      - id: script-must-have-extension
+        exclude: ^\.github/
+      - id: forbid-binary
+        exclude: ^docs/.*\.(png|jpg|jpeg|gif)$
 
-    - repo: https://github.com/adrienverge/yamllint.git
-      rev: v1.37.1
-      hooks:
-          - id: yamllint
-            args: [--format, parsable, --config-file, .yamllint.yml]
-            exclude: ^\.yamllint\.yml$
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        args: [--format, parsable]
 
-    - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
-      rev: 0.2.3
-      hooks:
-          - id: yamlfmt
+  - repo: https://github.com/jumanjihouse/pre-commit-hook-yamlfmt
+    rev: 0.2.3
+    hooks:
+      - id: yamlfmt
+        args: [--mapping, '2', --sequence, '4', --offset, '2', --width, '100']
 
-    - repo: https://github.com/hukkin/mdformat
-      rev: 0.7.22
-      hooks:
-          - id: mdformat
-            additional_dependencies:
-                - mdformat-gfm
+  - repo: https://github.com/hukkin/mdformat
+    rev: 0.7.22
+    hooks:
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm
