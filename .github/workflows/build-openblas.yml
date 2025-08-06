@@ -40,9 +40,6 @@ jobs:
   build:
     name: Build ${{ matrix.runner }} ${{ matrix.manylinux || 'native' }}
     runs-on: ${{ matrix.runner }}
-    container: >-
-      ${{ matrix.manylinux && format('quay.io/pypa/{0}_{1}',
-      matrix.manylinux, matrix.runner == 'ubuntu-24.04-arm' && 'aarch64' || 'x86_64') }}
     needs: check-version
     if: needs.check-version.outputs.should-build == 'true'
 
@@ -65,11 +62,6 @@ jobs:
             manylinux: manylinux_2_34
           # Native OS builds
           - runner: windows-latest
-          - runner: macos-13
-          - runner: macos-14
-          - runner: macos-15
-          - runner: macos-14-arm64
-          - runner: macos-15-arm64
 
     steps:
       - name: Checkout repository
@@ -77,6 +69,7 @@ jobs:
 
       - name: Set derived build variables
         id: vars
+        shell: bash
         run: |
           if [[ "${{ matrix.runner }}" == *"-arm"* || "${{ matrix.runner }}" == *"arm64" ]]; then
             ARCH="aarch64"
@@ -106,7 +99,8 @@ jobs:
         with:
           is-manylinux: ${{ matrix.manylinux != '' }}
 
-      - name: Build OpenBLAS
+      - name: Build OpenBLAS (native)
+        if: ${{ !matrix.manylinux }}
         shell: bash
         env:
           OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
@@ -119,12 +113,27 @@ jobs:
 
           echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
 
+      - name: Build OpenBLAS (manylinux)
+        if: ${{ matrix.manylinux }}
+        shell: bash
+        env:
+          OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
+          TARGET_CPU: ${{ steps.vars.outputs.target_cpu }}
+          ARCH: ${{ steps.vars.outputs.arch }}
+          PLATFORM: ${{ steps.vars.outputs.platform }}
+        run: |
+          docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
+            quay.io/pypa/${{ matrix.manylinux }}_${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64' || 'x86_64' }} \
+            bash -c "chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
+
+          echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: openblas-${{ needs.check-version.outputs.openblas-version }}-${{ steps.vars.outputs.platform
             }}-${{ steps.vars.outputs.arch }}
-          path: build/install/
+          path: install/
           if-no-files-found: error
           compression-level: 9
           retention-days: 30
@@ -147,6 +156,7 @@ jobs:
 
       - name: Create release archives
         if: needs.build.result == 'success'
+        shell: bash
         run: |
           cd artifacts
           for dir in openblas-*; do
@@ -160,6 +170,7 @@ jobs:
 
       - name: Update nightly release assets
         if: needs.check-version.outputs.is-nightly == 'true' && needs.build.result == 'success'
+        shell: bash
         run: |
           if gh release view nightly >/dev/null 2>&1; then
             echo "Updating existing nightly release assets..."

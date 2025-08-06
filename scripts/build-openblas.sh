@@ -45,7 +45,7 @@ fetch_and_checkout() {
 }
 
 configure_and_build() {
-  local install_prefix="${1:-${BUILD_DIR}/install}"
+  local install_prefix="${1:-install}"
 
   mkdir -p "${BUILD_DIR}"
   cd "${BUILD_DIR}"
