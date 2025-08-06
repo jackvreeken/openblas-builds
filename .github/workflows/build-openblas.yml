@@ -124,7 +124,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
             quay.io/pypa/${{ matrix.manylinux }}_${{ matrix.runner == 'ubuntu-24.04-arm' && 'aarch64' || 'x86_64' }} \
-            bash -c "chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
+            bash -c "source /opt/rh/gcc-toolset-14/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
 
           echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
 
