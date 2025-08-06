@@ -13,14 +13,4 @@ runs:
       if: runner.os == 'Windows'
       uses: fortran-lang/setup-fortran@v1
       with:
-        compiler: gcc
-        version: 13
-
-    - name: Verify build environment
-      shell: bash
-      run: |
-        echo "Build tools verification:"
-        echo "- CMake: $(cmake --version | head -1)"
-        echo "- C Compiler: $(cc --version | head -1)"
-        echo "- Fortran: $(gfortran --version | head -1)"
-        echo "Build environment ready"
+        compiler: intel
