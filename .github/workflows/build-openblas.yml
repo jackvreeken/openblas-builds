@@ -175,6 +175,7 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ needs.build.outputs.version }}
           name: OpenBLAS ${{ needs.build.outputs.version }}
           files: artifacts/*.{tar.gz,zip}
         env:
