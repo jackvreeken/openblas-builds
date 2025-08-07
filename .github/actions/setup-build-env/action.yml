@@ -21,3 +21,7 @@ runs:
           mingw-w64-ucrt-x86_64-toolchain
           mingw-w64-ucrt-x86_64-cmake
           mingw-w64-ucrt-x86_64-ninja
+
+    - name: Setup gfortran on macOS
+      if: runner.os == 'macOS'
+      uses: modflowpy/install-gfortran-action@v1
