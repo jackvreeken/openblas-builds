@@ -35,6 +35,7 @@ jobs:
           COMMIT=$(git ls-remote https://github.com/OpenMathLib/OpenBLAS.git "refs/tags/$VERSION" | cut -f1)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "Latest version found: $VERSION, commit: $COMMIT"
 
       - name: Check if any build needed
         id: check
@@ -43,8 +44,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release list --limit 10 --json tagName,body | jq -r ".[] | select(.body | contains(\"$COMMIT\")) | .tagName" | head -1 | grep -q .; then
+            echo "Found build for $VERSION"
             echo "already_built=true" >> $GITHUB_OUTPUT
           else
+            echo "No build found for $VERSION"
             echo "already_built=false" >> $GITHUB_OUTPUT
           fi
 
@@ -74,19 +77,19 @@ jobs:
           # - runner: ubuntu-24.04-arm
           #   toolset: gcc-toolset-14
           #   name: manylinux_2_28_aarch64
-          # - runner: ubuntu-24.04-arm
-          #   toolset: gcc-toolset-14
-          #   name: manylinux_2_34_aarch64
+          - runner: ubuntu-24.04-arm
+            toolset: gcc-toolset-14
+            name: manylinux_2_34_aarch64
           # Native OS builds
           # - runner: windows-latest
           #   name: windows-x64
           # macOS builds
-          - runner: macos-13
-            name: macos-13-x64
-          - runner: macos-14
-            name: macos-14-arm64
-          - runner: macos-15
-            name: macos-15-arm64
+          # - runner: macos-13
+          #   name: macos-13-x64
+          # - runner: macos-14
+          #   name: macos-14-arm64
+          # - runner: macos-15
+          #   name: macos-15-arm64
 
     steps:
       - name: Checkout repository
