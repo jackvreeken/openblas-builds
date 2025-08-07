@@ -5,21 +5,6 @@ IFS=$'\n\t'
 # OpenBLAS Build Script
 # Works on Linux (including manylinux containers), macOS, and Windows (Git Bash/MSYS2)
 
-get_latest_openblas_version() {
-  local latest_version
-
-  latest_version=$(curl -s -H "Accept: application/vnd.github.v3+json" \
-    "https://api.github.com/repos/OpenMathLib/OpenBLAS/releases/latest" | \
-    grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4 2>/dev/null)
-
-  if [[ -z "$latest_version" ]]; then
-    echo "Error: Could not fetch latest OpenBLAS version from GitHub" >&2
-    echo "This could be due to network issues or GitHub API limits" >&2
-    exit 1
-  else
-    echo "$latest_version"
-  fi
-}
 
 fetch_and_checkout() {
   local version="$1"
@@ -74,12 +59,12 @@ main() {
         ;;
       -h|--help)
         echo "Usage: $0 [--prefix PATH]"
-        echo "  --prefix PATH    Install prefix (default: install)"
+        echo "  --prefix PATH      Install prefix (default: install)"
         echo "Environment variables:"
-        echo "  OPENBLAS_VERSION  OpenBLAS version (default: latest)"
-        echo "  TARGET_CPU        Target CPU (default: HASWELL / ARMV8)"
-        echo "  BUILD_DIR         Build directory (default: build)"
-        echo "  DYNAMIC_ARCH      Dynamic arch (default: ON)"
+        echo "  OPENBLAS_VERSION   OpenBLAS version (required)"
+        echo "  TARGET_CPU         Target CPU (default: HASWELL / ARMV8)"
+        echo "  BUILD_DIR          Build directory (default: build)"
+        echo "  DYNAMIC_ARCH       Dynamic arch (default: ON)"
         exit 0
         ;;
       *)
@@ -112,10 +97,12 @@ main() {
   fi
 
   if [[ -z "${OPENBLAS_VERSION:-}" ]]; then
-    echo "Fetching latest OpenBLAS version..."
-    OPENBLAS_VERSION=$(get_latest_openblas_version)
-    echo "Latest version found: ${OPENBLAS_VERSION}"
+    echo "Error: OPENBLAS_VERSION environment variable is required" >&2
+    echo "This should be set by the workflow's check step" >&2
+    exit 1
   fi
+
+  echo "Building OpenBLAS version: ${OPENBLAS_VERSION}"
 
   local install_prefix="${prefix:-install}"
 

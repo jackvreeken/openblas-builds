@@ -1,8 +1,6 @@
 ---
 name: Build OpenBLAS
 
-# Build configuration - see individual steps for variable usage
-
 on:
   push:
     branches: [master]
@@ -18,31 +16,43 @@ on:
         required: false
         default: ''
         type: string
-      is_nightly:
-        description: Create nightly release (overwrites previous nightly)
-        required: false
-        default: false
-        type: boolean
-
-env:
-  # Use input version if provided, otherwise let build script fetch latest
-  OPENBLAS_VERSION: ${{ inputs.openblas_version || '' }}
-  IS_NIGHTLY: ${{ inputs.is_nightly || github.event_name == 'schedule' }}
 
 jobs:
-  check-version:
-    uses: ./.github/workflows/check-openblas.yml
-    with:
-      version: ${{ inputs.openblas_version || '' }}
-      is-nightly: ${{ inputs.is_nightly || github.event_name == 'schedule' }}
-    secrets: inherit
+  check:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      already_built: ${{ steps.check.outputs.already_built }}
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.version.outputs.commit }}
+    steps:
+      - name: Get latest OpenBLAS version
+        id: version
+        run: |
+          VERSION=$(gh release list --repo OpenMathLib/OpenBLAS --limit 1 --exclude-pre-releases --json tagName --jq '.[0].tagName')
+          COMMIT=$(git ls-remote https://github.com/OpenMathLib/OpenBLAS.git "refs/tags/$VERSION" | cut -f1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+
+      - name: Check if any build needed
+        id: check
+        env:
+          COMMIT: ${{ steps.version.outputs.commit }}
+        run: |
+          if gh release list --limit 10 --json tagName,body | jq -r ".[] | select(.body | contains(\"$COMMIT\")) | .tagName" | head -1 | grep -q .; then
+            echo "already_built=true" >> $GITHUB_OUTPUT
+          else
+            echo "already_built=false" >> $GITHUB_OUTPUT
+          fi
 
   build:
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    needs: check-version
-    if: needs.check-version.outputs.should-build == 'true'
-
+    needs: check
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.check.outputs.already_built ==
+      'false')
     strategy:
       fail-fast: false
       matrix:
@@ -79,34 +89,41 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Get OpenBLAS version for build
+        id: version
+        run: |
+          OPENBLAS_VERSION=${{ inputs.openblas_version }}
+          if [[ -z "$OPENBLAS_VERSION" ]]; then
+            echo "No OpenBLAS version provided, using latest version"
+            OPENBLAS_VERSION=${{ needs.check.outputs.version }}
+          else
+            echo "Using provided OpenBLAS version: $OPENBLAS_VERSION"
+          fi
+          echo "OPENBLAS_VERSION=$OPENBLAS_VERSION" >> $GITHUB_ENV
+          echo "version=$OPENBLAS_VERSION" >> $GITHUB_OUTPUT
+
       - name: Set up build environment
         uses: ./.github/actions/setup-build-env
         with:
           is-manylinux: ${{ contains(matrix.name, 'manylinux') }}
 
       - name: Build OpenBLAS (Windows)
-        if: ${{ contains(matrix.runner, 'windows') }}
+        if: contains(matrix.runner, 'windows')
         shell: msys2 {0}
-        env:
-          OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
         run: |
           chmod +x scripts/build-openblas.sh
           ./scripts/build-openblas.sh
 
       - name: Build OpenBLAS (macOS)
-        if: ${{ contains(matrix.runner, 'macos') }}
+        if: contains(matrix.runner, 'macos')
         shell: bash
-        env:
-          OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
         run: |
           chmod +x scripts/build-openblas.sh
           ./scripts/build-openblas.sh
 
       - name: Build OpenBLAS (manylinux)
-        if: ${{ contains(matrix.name, 'manylinux') }}
+        if: contains(matrix.name, 'manylinux')
         shell: bash
-        env:
-          OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
         run: |
           docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
             quay.io/pypa/${{ matrix.name }} \
@@ -115,7 +132,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: openblas-${{ needs.check-version.outputs.openblas-version }}-${{ matrix.name }}
+          name: openblas-${{ steps.version.outputs.version }}-${{ matrix.name }}
           path: install/
           if-no-files-found: error
           compression-level: 9
@@ -123,22 +140,19 @@ jobs:
 
   release:
     name: Create Release
-    needs: [check-version, build]
+    needs: [check, build]
     runs-on: ubuntu-latest
     if: |
-      needs.check-version.result == 'success' &&
-      (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.check-version.outputs.is-nightly == 'true')) &&
-      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/master')) &&
+      (needs.check.result == 'success' || needs.check.result == 'skipped') && needs.build.result == 'success'
 
     steps:
       - name: Download all artifacts
-        if: needs.build.result == 'success'
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
       - name: Create release archives
-        if: needs.build.result == 'success'
         shell: bash
         run: |
           cd artifacts
@@ -151,42 +165,10 @@ jobs:
           done
           ls -la *.{tar.gz,zip} 2>/dev/null || echo "No archives created"
 
-      - name: Update nightly release assets
-        if: needs.check-version.outputs.is-nightly == 'true' && needs.build.result == 'success'
-        shell: bash
-        run: |
-          if gh release view nightly >/dev/null 2>&1; then
-            echo "Updating existing nightly release assets..."
-            # Remove old assets but keep release
-            gh release delete-asset nightly --yes $(gh release view nightly --json assets --jq '.assets[].name' | tr '\n' ' ') || true
-          fi
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ needs.check-version.outputs.is-nightly == 'true' && 'nightly' || format('{0}-build-{1}',
-            needs.check-version.outputs.openblas-version, github.run_number) }}
-          name: ${{ needs.check-version.outputs.is-nightly == 'true' && format('OpenBLAS {0} Nightly Build',
-            needs.check-version.outputs.openblas-version) || format('OpenBLAS {0} Build {1}', needs.check-version.outputs.openblas-version,
-            github.run_number) }}
-          body: |
-            ${{ needs.check-version.outputs.is-nightly == 'true' && format('Automated nightly build of OpenBLAS {0}
-
-            **Version:** {0}
-            **Commit:** {1}
-            **Built:** {2}
-
-            This release is updated weekly and contains the latest stable version of OpenBLAS compiled for multiple platforms.
-
-            **Note:** This is a nightly build that gets overwritten weekly. For stable releases, use the tagged releases.', needs.check-version.outputs.openblas-version, needs.check-version.outputs.openblas-commit, github.run_id) || format('Build of OpenBLAS {0} for multiple platforms
-
-            **Version:** {0}
-            **Commit:** {1}
-            **Build ID:** {2}', needs.check-version.outputs.openblas-version, needs.check-version.outputs.openblas-commit, github.run_number) }}
-          draft: false
-          prerelease: ${{ needs.check-version.outputs.is-nightly == 'true' }}
-          files: ${{ needs.build.result == 'success' && 'artifacts/*.{tar.gz,zip}' || '' }}
+          name: OpenBLAS ${{ needs.build.outputs.version }}
+          files: artifacts/*.{tar.gz,zip}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
