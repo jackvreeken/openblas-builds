@@ -5,9 +5,9 @@ name: Build OpenBLAS
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   pull_request:
-    branches: [main]
+    branches: [master]
   schedule:
     # Run weekly on Sundays at 02:00 UTC to check for new OpenBLAS releases
     - cron: 0 2 * * 0
