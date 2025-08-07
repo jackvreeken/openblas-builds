@@ -17,6 +17,7 @@ runs:
         update: true
         install: >-
           base-devel
+          git
           mingw-w64-ucrt-x86_64-toolchain
           mingw-w64-ucrt-x86_64-cmake
           mingw-w64-ucrt-x86_64-ninja
