@@ -134,7 +134,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
             quay.io/pypa/${{ matrix.name }} \
-            bash -c "source /opt/rh/${{ matrix.toolset }}/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
+            bash -c "yum install -y ninja-build && source /opt/rh/${{ matrix.toolset }}/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
