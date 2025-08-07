@@ -79,7 +79,7 @@ jobs:
 
       - name: Build OpenBLAS (native)
         if: ${{ !contains(matrix.name, 'manylinux') }}
-        shell: ${{ matrix.name == 'windows-x64' && 'msys2 {0}' || 'bash' }}
+        shell: ${{ runner.os == 'Windows' && 'msys2 {0}' || 'bash' }}
         env:
           OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
         run: |
