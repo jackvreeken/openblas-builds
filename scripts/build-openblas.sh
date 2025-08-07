@@ -7,7 +7,10 @@ IFS=$'\n\t'
 
 get_latest_openblas_version() {
   local latest_version
-  latest_version=$(gh release list --repo OpenMathLib/OpenBLAS --limit 1 --exclude-pre-releases --json tagName --jq '.[0].tagName' 2>/dev/null)
+
+  latest_version=$(curl -s -H "Accept: application/vnd.github.v3+json" \
+    "https://api.github.com/repos/OpenMathLib/OpenBLAS/releases/latest" | \
+    grep -o '"tag_name": "[^"]*"' | cut -d'"' -f4 2>/dev/null)
 
   if [[ -z "$latest_version" ]]; then
     echo "Error: Could not fetch latest OpenBLAS version from GitHub" >&2
@@ -20,28 +23,18 @@ get_latest_openblas_version() {
 
 fetch_and_checkout() {
   local version="$1"
-  echo "Building OpenBLAS ${version} for ${PLATFORM} ${ARCH}"
-  echo "Target CPU: ${TARGET_CPU}, Dynamic Arch: ${DYNAMIC_ARCH}"
-
-  if [[ -z "${PLATFORM:-}" ]]; then
-    case "$(uname -s)" in
-      Linux*)     PLATFORM=linux;;
-      Darwin*)    PLATFORM=macos;;
-      MINGW*|MSYS*|CYGWIN*) PLATFORM=windows;;
-      *)          PLATFORM=unknown;;
-    esac
-  fi
+  echo "Building OpenBLAS ${version}"
 
   if [[ ! -d "OpenBLAS" ]]; then
-    echo "Cloning OpenBLAS repository..."
-    git clone https://github.com/OpenMathLib/OpenBLAS.git
+    echo "Cloning OpenBLAS repository (depth 1 for tag ${version})..."
+    git clone --depth 1 --branch "${version}" https://github.com/OpenMathLib/OpenBLAS.git
+  else
+    cd OpenBLAS
+    echo "Checking out OpenBLAS ${version}..."
+    git fetch origin "${version}"
+    git checkout "${version}"
+    cd ..
   fi
-
-  cd OpenBLAS
-  echo "Checking out OpenBLAS ${version}..."
-  git fetch --tags
-  git checkout "${version}"
-  cd ..
 }
 
 configure_and_build() {
@@ -50,6 +43,7 @@ configure_and_build() {
   local cmake_args=(
     -S OpenBLAS
     -B "${BUILD_DIR}"
+    -G "Ninja"
     -DDYNAMIC_ARCH="${DYNAMIC_ARCH}"
     -DTARGET="${TARGET_CPU}"
     -DCMAKE_BUILD_TYPE=Release
@@ -60,48 +54,12 @@ configure_and_build() {
     -DCMAKE_INSTALL_PREFIX="${install_prefix}"
   )
 
-  case "${PLATFORM}" in
-    windows)
-      cmake_args+=(
-        -G "Ninja"
-        -DCMAKE_C_COMPILER=cl
-        -DCMAKE_Fortran_COMPILER=ifx
-      )
-      ;;
-    macos*)
-      if [[ "${ARCH}" == "arm64" ]]; then
-        cmake_args+=(-DCMAKE_OSX_ARCHITECTURES=arm64)
-      else
-        cmake_args+=(-DCMAKE_OSX_ARCHITECTURES=x86_64)
-      fi
-      ;;
-    manylinux*)
-      cmake_args+=(
-        -DCMAKE_C_COMPILER=gcc
-        -DCMAKE_Fortran_COMPILER=gfortran
-      )
-      ;;
-  esac
+  echo "CMAKE_ARGS: ${cmake_args[*]}"
 
-  echo "Running CMake configuration and build..."
-  echo "CMake args: ${cmake_args[*]}"
   cmake "${cmake_args[@]}"
 
   echo "Building and installing OpenBLAS..."
   cmake --build "${BUILD_DIR}" --parallel "$(nproc)" --target install
-
-  echo "Build completed successfully!"
-  echo "Installation directory: ${install_prefix}"
-
-  echo "Verifying build..."
-  ls -la "${install_prefix}"/lib*/
-
-  if command -v ldd &> /dev/null && [[ "${PLATFORM}" != "windows" ]]; then
-    echo "Library dependencies:"
-    find "${install_prefix}"/lib* -name "*.so*" -o -name "*.dylib" | head -1 | xargs ldd || true
-  fi
-
-  echo "OpenBLAS build completed for ${PLATFORM} ${ARCH}"
 }
 
 main() {
@@ -119,11 +77,9 @@ main() {
         echo "  --prefix PATH    Install prefix (default: install)"
         echo "Environment variables:"
         echo "  OPENBLAS_VERSION  OpenBLAS version (default: latest)"
-        echo "  TARGET_CPU        Target CPU (default: NEHALEM)"
-        echo "  ARCH              Architecture (default: x86_64)"
-        echo "  PLATFORM          Platform (default: auto-detect)"
+        echo "  TARGET_CPU        Target CPU (default: HASWELL / ARMV8)"
         echo "  BUILD_DIR         Build directory (default: build)"
-        echo "  DYNAMIC_ARCH      Dynamic arch (default: TRUE)"
+        echo "  DYNAMIC_ARCH      Dynamic arch (default: ON)"
         exit 0
         ;;
       *)
@@ -133,12 +89,27 @@ main() {
     esac
   done
 
+  # Get the architecture of the current machine
+  ARCH=$(uname -m)
+  if [[ "${ARCH}" == "x86_64" ]]; then
+    TARGET_CPU="${TARGET_CPU:-HASWELL}"
+  else
+    TARGET_CPU="${TARGET_CPU:-ARMV8}"
+  fi
+
   # Set defaults
-  TARGET_CPU="${TARGET_CPU:-NEHALEM}"
-  ARCH="${ARCH:-x86_64}"
-  PLATFORM="${PLATFORM:-linux}"
   BUILD_DIR="${BUILD_DIR:-build}"
-  DYNAMIC_ARCH="${DYNAMIC_ARCH:-TRUE}"
+  DYNAMIC_ARCH="${DYNAMIC_ARCH:-ON}"
+
+  # Check if ARCH and TARGET_CPU are set
+  if [[ -z "${ARCH:-}" ]]; then
+    echo "ARCH is not set" >&2
+    exit 1
+  fi
+  if [[ -z "${TARGET_CPU:-}" ]]; then
+    echo "TARGET_CPU is not set" >&2
+    exit 1
+  fi
 
   if [[ -z "${OPENBLAS_VERSION:-}" ]]; then
     echo "Fetching latest OpenBLAS version..."

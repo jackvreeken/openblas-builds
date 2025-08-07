@@ -72,21 +72,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set derived build variables
-        id: vars
-        shell: bash
-        run: |
-          if [[ "${{ matrix.runner }}" == *"-arm"* || "${{ matrix.runner }}" == *"arm64" ]]; then
-            ARCH="aarch64"
-          elif [[ "${{ matrix.runner }}" == windows-* ]]; then
-            ARCH="x64"
-          else
-            ARCH="x86_64"
-          fi
-
-          echo "arch=$ARCH" >> $GITHUB_OUTPUT
-          echo "Building ${{ matrix.name }} ($ARCH)"
-
       - name: Set up build environment
         uses: ./.github/actions/setup-build-env
         with:
@@ -94,28 +79,22 @@ jobs:
 
       - name: Build OpenBLAS (native)
         if: ${{ !contains(matrix.name, 'manylinux') }}
-        shell: bash
+        shell: ${{ matrix.name == 'windows-x64' && 'msys2 {0}' || 'bash' }}
         env:
           OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
-          ARCH: ${{ steps.vars.outputs.arch }}
         run: |
           chmod +x scripts/build-openblas.sh
           ./scripts/build-openblas.sh
-
-          echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
 
       - name: Build OpenBLAS (manylinux)
         if: ${{ contains(matrix.name, 'manylinux') }}
         shell: bash
         env:
           OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
-          ARCH: ${{ steps.vars.outputs.arch }}
         run: |
           docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
             quay.io/pypa/${{ matrix.name }} \
             bash -c "source /opt/rh/${{ matrix.toolset }}/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
-
-          echo "ACTUAL_OPENBLAS_VERSION=${{ needs.check-version.outputs.openblas-version }}" >> $GITHUB_ENV
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
