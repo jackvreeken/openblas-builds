@@ -41,6 +41,7 @@ jobs:
         id: check
         env:
           COMMIT: ${{ steps.version.outputs.commit }}
+          VERSION: ${{ steps.version.outputs.version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release list --limit 10 --json tagName,body | jq -r ".[] | select(.body | contains(\"$COMMIT\")) | .tagName" | head -1 | grep -q .; then
