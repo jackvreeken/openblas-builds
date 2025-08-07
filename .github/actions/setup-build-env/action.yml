@@ -24,4 +24,6 @@ runs:
 
     - name: Setup gfortran on macOS
       if: runner.os == 'macOS'
-      uses: modflowpy/install-gfortran-action@v1
+      uses: fortran-lang/setup-fortran@v1
+      with:
+        compiler: gcc
