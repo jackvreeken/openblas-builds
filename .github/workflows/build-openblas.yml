@@ -159,24 +159,49 @@ jobs:
         with:
           path: artifacts
 
+      - name: Debug - Check artifacts directory
+        run: |
+          echo "=== Artifacts directory contents ==="
+          ls -la artifacts/
+          echo ""
+          echo "=== Detailed view ==="
+          find artifacts/ -type f -ls
+
       - name: Create release archives
         shell: bash
         run: |
           cd artifacts
+          echo "=== Creating archives from artifact directories ==="
           for dir in openblas-*; do
+            echo "Processing directory: $dir"
             if [[ "$dir" == *"windows"* ]]; then
+              echo "Creating zip for Windows: ${dir}.zip"
               (cd "$dir" && zip -r "../${dir}.zip" .)
             else
+              echo "Creating tar.gz for Unix: ${dir}.tar.gz"
               tar -czf "${dir}.tar.gz" -C "$dir" .
             fi
           done
-          ls -la *.{tar.gz,zip} 2>/dev/null || echo "No archives created"
+          echo ""
+          echo "=== Final archives created ==="
+          ls -la *.{tar.gz,zip} 2>/dev/null || echo "No archives found"
+          echo ""
+          echo "=== All files in artifacts directory ==="
+          ls -la
+
+      - name: Debug - Release info
+        run: |
+          echo "=== Release information ==="
+          echo "Tag name: ${{ needs.build.outputs.version }}"
+          echo "Release name: OpenBLAS ${{ needs.build.outputs.version }}"
+          echo "Files to upload:"
+          ls -la artifacts/*
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ needs.build.outputs.version }}
           name: OpenBLAS ${{ needs.build.outputs.version }}
-          files: artifacts/*.{tar.gz,zip}
+          files: artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
