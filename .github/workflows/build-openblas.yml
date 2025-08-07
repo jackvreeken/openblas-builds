@@ -27,6 +27,8 @@ jobs:
       commit: ${{ steps.version.outputs.commit }}
     steps:
       - name: Get latest OpenBLAS version
+        env:
+          GH_TOKEN: ${{ github.token }}
         id: version
         run: |
           VERSION=$(gh release list --repo OpenMathLib/OpenBLAS --limit 1 --exclude-pre-releases --json tagName --jq '.[0].tagName')
@@ -38,6 +40,7 @@ jobs:
         id: check
         env:
           COMMIT: ${{ steps.version.outputs.commit }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if gh release list --limit 10 --json tagName,body | jq -r ".[] | select(.body | contains(\"$COMMIT\")) | .tagName" | head -1 | grep -q .; then
             echo "already_built=true" >> $GITHUB_OUTPUT
