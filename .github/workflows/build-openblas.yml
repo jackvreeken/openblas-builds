@@ -78,17 +78,8 @@ jobs:
           is-manylinux: ${{ contains(matrix.name, 'manylinux') }}
 
       - name: Build OpenBLAS (Windows)
-        if: ${{ !contains(matrix.name, 'manylinux') && contains(matrix.runner, 'windows') }}
+        if: ${{ contains(matrix.runner, 'windows') }}
         shell: msys2 {0}
-        env:
-          OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
-        run: |
-          chmod +x scripts/build-openblas.sh
-          ./scripts/build-openblas.sh
-
-      - name: Build OpenBLAS (Unix)
-        if: ${{ !contains(matrix.name, 'manylinux') && !contains(matrix.runner, 'windows') }}
-        shell: bash
         env:
           OPENBLAS_VERSION: ${{ needs.check-version.outputs.openblas-version }}
         run: |
