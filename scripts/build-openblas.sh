@@ -39,6 +39,15 @@ configure_and_build() {
     -DCMAKE_INSTALL_PREFIX="${install_prefix}"
   )
 
+  # Add RPATH=$ORIGIN for Linux builds to look in local directory first
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    cmake_args+=(
+      -DCMAKE_INSTALL_RPATH='$ORIGIN'
+      -DCMAKE_BUILD_RPATH='$ORIGIN'
+      -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
+    )
+  fi
+
   if [[ "$static_only" == "true" ]]; then
     echo "Configuring for static-only build (musl/static linking)"
     cmake_args+=(-DBUILD_SHARED_LIBS=OFF)
