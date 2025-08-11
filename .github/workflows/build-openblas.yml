@@ -58,7 +58,7 @@ jobs:
           fi
 
   build:
-    name: Build ${{ matrix.name }}
+    name: Build ${{ matrix.name }}${{ matrix.target && format('-{0}', matrix.target) || '' }}
     runs-on: ${{ matrix.runner }}
     needs: check
     outputs:
@@ -74,8 +74,16 @@ jobs:
             toolset: devtoolset-10
             name: manylinux2014_x86_64
           - runner: ubuntu-latest
+            toolset: devtoolset-10
+            name: manylinux2014_x86_64
+            target: haswell
+          - runner: ubuntu-latest
             toolset: gcc-toolset-14
             name: manylinux_2_28_x86_64
+          - runner: ubuntu-latest
+            toolset: gcc-toolset-14
+            name: manylinux_2_28_x86_64
+            target: haswell
           #  Neoverse not supported by GCC 10, so we skip manylinux2014_aarch64
           - runner: ubuntu-24.04-arm
             toolset: gcc-toolset-14
@@ -83,11 +91,17 @@ jobs:
           # musllinux builds
           - runner: ubuntu-latest
             name: musllinux_1_2_x86_64
+          - runner: ubuntu-latest
+            name: musllinux_1_2_x86_64
+            target: haswell
           - runner: ubuntu-24.04-arm
             name: musllinux_1_2_aarch64
           # Windows builds
           - runner: windows-latest
             name: windows-x64
+          - runner: windows-latest
+            name: windows-x64
+            target: haswell
           # macOS builds
           - runner: macos-14
             name: macos-14-arm64
@@ -120,14 +134,14 @@ jobs:
         shell: msys2 {0}
         run: |
           chmod +x scripts/build-openblas.sh
-          ./scripts/build-openblas.sh
+          ./scripts/build-openblas.sh ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
       - name: Build OpenBLAS (macOS)
         if: contains(matrix.runner, 'macos')
         shell: bash
         run: |
           chmod +x scripts/build-openblas.sh
-          ./scripts/build-openblas.sh
+          ./scripts/build-openblas.sh ${{ matrix.target && format('--target {0}', matrix.target) || '' }}
 
       - name: Build OpenBLAS (manylinux)
         if: contains(matrix.name, 'manylinux')
@@ -135,7 +149,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
             quay.io/pypa/${{ matrix.name }} \
-            bash -c "yum install -y ninja-build && source /opt/rh/${{ matrix.toolset }}/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh"
+            bash -c "yum install -y ninja-build && source /opt/rh/${{ matrix.toolset }}/enable && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh ${{ matrix.target && format('--target {0}', matrix.target) || '' }}"
 
       - name: Build OpenBLAS (musllinux)
         if: contains(matrix.name, 'musllinux')
@@ -143,12 +157,13 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/workspace" -w /workspace --env-file <(env) \
             quay.io/pypa/${{ matrix.name }} \
-            bash -c "apk add --no-cache ninja && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh --static-only"
+            bash -c "apk add --no-cache ninja && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh --static-only ${{ matrix.target && format('--target {0}', matrix.target) || '' }}"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: openblas-${{ steps.version.outputs.version }}-${{ matrix.name }}
+          name: openblas-${{ steps.version.outputs.version }}-${{ matrix.name }}${{ matrix.target && format('-{0}',
+            matrix.target) || '' }}
           path: install/
           if-no-files-found: error
           compression-level: 9

@@ -66,6 +66,7 @@ configure_and_build() {
 main() {
   local prefix=""
   local static_only=false
+  local target=""
 
   # Parse CLI arguments
   while [[ $# -gt 0 ]]; do
@@ -74,17 +75,23 @@ main() {
         prefix="$2"
         shift 2
         ;;
+      --target)
+        target="$2"
+        shift 2
+        ;;
       --static-only)
         static_only=true
         shift
         ;;
       -h|--help)
-        echo "Usage: $0 [--prefix PATH] [--static-only]"
+        echo "Usage: $0 [--prefix PATH] [--target CPU] [--static-only]"
         echo "  --prefix PATH      Install prefix (default: install)"
+        echo "  --target CPU       Target CPU (default: CORE2 for x86_64, ARMV8 for aarch64)"
+        echo "                     Common x86_64 targets: CORE2, HASWELL, SKYLAKEX"
         echo "  --static-only      Build static libraries only (for musl/static linking)"
         echo "Environment variables:"
         echo "  OPENBLAS_VERSION   OpenBLAS version (required)"
-        echo "  TARGET_CPU         Target CPU (default: CORE2 / ARMV8)"
+        echo "  TARGET_CPU         Target CPU (overrides --target and defaults)"
         echo "  BUILD_DIR          Build directory (default: build)"
         echo "  DYNAMIC_ARCH       Dynamic arch (default: ON)"
         exit 0
@@ -98,10 +105,16 @@ main() {
 
   # Get the architecture of the current machine
   ARCH=$(uname -m)
-  if [[ "${ARCH}" == "x86_64" ]]; then
-    TARGET_CPU="${TARGET_CPU:-CORE2}"
-  else
-    TARGET_CPU="${TARGET_CPU:-ARMV8}"
+
+  # Determine TARGET_CPU: env var takes precedence, then --target arg, then defaults
+  if [[ -z "${TARGET_CPU:-}" ]]; then
+    if [[ -n "${target}" ]]; then
+      TARGET_CPU="${target}"
+    elif [[ "${ARCH}" == "x86_64" ]]; then
+      TARGET_CPU="CORE2"
+    else
+      TARGET_CPU="ARMV8"
+    fi
   fi
 
   # Set defaults
@@ -125,6 +138,7 @@ main() {
   fi
 
   echo "Building OpenBLAS version: ${OPENBLAS_VERSION}"
+  echo "Target CPU: ${TARGET_CPU}"
 
   local install_prefix="${prefix:-install}"
 
