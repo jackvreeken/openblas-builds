@@ -29,7 +29,6 @@ configure_and_build() {
   local cmake_args=(
     -S OpenBLAS
     -B "${BUILD_DIR}"
-    -G "Ninja"
     -DDYNAMIC_ARCH="${DYNAMIC_ARCH}"
     -DTARGET="${TARGET_CPU}"
     -DCMAKE_BUILD_TYPE=Release
@@ -38,6 +37,11 @@ configure_and_build() {
     -DNUM_THREADS=64
     -DCMAKE_INSTALL_PREFIX="${install_prefix}"
   )
+
+  # macOS: Use Unix Makefiles (OpenBLAS's response file workaround assumes Makefiles paths)
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    cmake_args+=(-G "Ninja")
+  fi
 
   # Add RPATH=$ORIGIN for Linux builds to look in local directory first
   if [[ "$(uname -s)" == "Linux" ]]; then
@@ -60,7 +64,11 @@ configure_and_build() {
   cmake "${cmake_args[@]}"
 
   echo "Building and installing OpenBLAS..."
-  cmake --build "${BUILD_DIR}" --parallel "$(nproc)" --target install
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    cmake --build "${BUILD_DIR}" --target install
+  else
+    cmake --build "${BUILD_DIR}" --parallel "$(nproc)" --target install
+  fi
 }
 
 main() {
