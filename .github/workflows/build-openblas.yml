@@ -104,9 +104,9 @@ jobs:
             target: haswell
           # macOS builds
           - runner: macos-14
-            name: macos-14-arm64
-          - runner: macos-15
-            name: macos-15-arm64
+            name: macos-arm64
+          - runner: macos-15-intel
+            name: macos-x86_64
 
     steps:
       - name: Checkout repository
