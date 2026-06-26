@@ -61,14 +61,45 @@ configure_and_build() {
 
   echo "CMAKE_ARGS: ${cmake_args[*]}"
 
-  cmake "${cmake_args[@]}"
+  # On the macOS "casadi" variant, ${CMAKE} runs cmake inside the conda-forge toolchain
+  # env (set up by scripts/setup-macos-toolchain.sh) so configure/build use the
+  # ABI-matched gfortran. Elsewhere ${CMAKE} is unset and a plain `cmake` is used.
+  ${CMAKE:-cmake} "${cmake_args[@]}"
 
   echo "Building and installing OpenBLAS..."
   if [[ "$(uname -s)" == "Darwin" ]]; then
-    cmake --build "${BUILD_DIR}" --target install
+    ${CMAKE:-cmake} --build "${BUILD_DIR}" --target install
   else
-    cmake --build "${BUILD_DIR}" --parallel "$(nproc)" --target install
+    ${CMAKE:-cmake} --build "${BUILD_DIR}" --parallel "$(nproc)" --target install
   fi
+
+  if [[ "$(uname -s)" == "Darwin" && -n "${CMAKE:-}" ]]; then
+    verify_macos_abi "${install_prefix}"
+  fi
+}
+
+# Guard for the casadi variant: its libopenblas dylib must link the conda-forge
+# libgfortran via @rpath, never an absolute Homebrew gcc path (libgfortran >= 13),
+# which would break the matched-ABI use case.
+verify_macos_abi() {
+  local install_prefix="$1"
+  local dylib bad=0
+
+  echo "Verifying macOS libgfortran ABI of built OpenBLAS libraries..."
+  while IFS= read -r dylib; do
+    echo "== ${dylib}"
+    otool -L "${dylib}"
+    if otool -L "${dylib}" | grep -q '/opt/homebrew/.*libgfortran'; then
+      echo "ERROR: ${dylib} links a Homebrew libgfortran (ABI-incompatible with CasADi)" >&2
+      bad=1
+    fi
+  done < <(find "${install_prefix}" -name 'libopenblas*.dylib')
+
+  if [[ "${bad}" -ne 0 ]]; then
+    echo "macOS libgfortran ABI check failed" >&2
+    exit 1
+  fi
+  echo "macOS libgfortran ABI check passed"
 }
 
 main() {

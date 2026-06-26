@@ -107,6 +107,13 @@ jobs:
             name: macos-arm64
           - runner: macos-15-intel
             name: macos-x86_64
+          # macOS build with a conda-forge toolchain (gfortran 12, libgfortran < 13),
+          # for consumers that need that ABI (e.g. binaries built against the same
+          # conda-forge runtime, such as CasADi's). The default macos-arm64 build
+          # above keeps using the runner's Homebrew gcc for everyone else.
+          - runner: macos-14
+            name: macos-arm64-casadi
+            toolchain: casadi
 
     steps:
       - name: Checkout repository
@@ -128,6 +135,13 @@ jobs:
 
       - name: Set up build environment (for native runners)
         uses: ./.github/actions/setup-build-env
+
+      - name: Set up CasADi-matched macOS toolchain
+        if: matrix.toolchain == 'casadi'
+        shell: bash
+        # Installs a conda-forge gfortran 12 toolchain (libgfortran < 13);
+        # build-openblas.sh then builds through ${CMAKE}.
+        run: bash "${GITHUB_WORKSPACE}/scripts/setup-macos-toolchain.sh"
 
       - name: Build OpenBLAS (Windows)
         if: contains(matrix.runner, 'windows')
