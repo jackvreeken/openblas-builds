@@ -5,14 +5,16 @@
 # Why this exists:
 #   This variant targets consumers that load OpenBLAS in the same process as binaries
 #   built against the conda-forge gfortran 12 runtime (libgfortran < 13) -- e.g.
-#   CasADi's published binaries. The default macOS build uses the runner's Homebrew
-#   gcc (gcc 15, libgfortran >= 13), which is fine for most consumers but
-#   ABI-incompatible with that runtime; this build uses the matching toolchain.
+#   CasADi's published binaries. The default macOS build ships the C LAPACK with no
+#   Fortran runtime dependency at all; this variant builds the Fortran LAPACK with the
+#   matching conda toolchain so its libgfortran ABI lines up with CasADi's.
 #
 #   The conda compilers need their activation environment (rpath link args, -isysroot,
-#   *FLAGS), so instead of exporting bare compiler paths this script exposes $CMAKE,
-#   which runs cmake inside the activated env (`micromamba run`). build-openblas.sh
-#   calls ${CMAKE:-cmake}, so configure + build run under the correct toolchain.
+#   *FLAGS), so instead of exporting bare compiler paths this script exposes $MAKE_CMD,
+#   which runs make inside the activated env (`micromamba run`). build-openblas.sh
+#   calls ${MAKE_CMD:-make}, so the build runs under the correct toolchain. The
+#   variable is deliberately not named MAKE: it is exported job-wide, and OpenBLAS's
+#   recursive $(MAKE) would then route every sub-make through micromamba run.
 set -euo pipefail
 
 # --- Pins (immutable: version + sha256) --------------------------------------
@@ -31,7 +33,6 @@ CONDA_SPECS=(
   "libgfortran<13"
   "libgfortran5<13"
   "libcxx==16.0.6"
-  "cmake"
   "make"
 )
 
@@ -69,20 +70,20 @@ main() {
   tar -xf "${work}/sdk.tar.xz" -C "${work}"   # yields ${work}/MacOSX11.1.sdk
   echo "::endgroup::"
 
-  # Wrapper so cmake runs inside the activated env (inheriting FC/CC/CXX, *FLAGS and
+  # Wrapper so make runs inside the activated env (inheriting FC/CC/CXX, *FLAGS and
   # the rpath link args). It must be a single executable, not a multi-word command
-  # string: build-openblas.sh runs with IFS=$'\n\t', so a space-separated ${CMAKE}
+  # string: build-openblas.sh runs with IFS=$'\n\t', so a space-separated ${MAKE_CMD}
   # would not word-split and would be treated as one bogus command name.
-  local cmake_wrapper="${work}/bin/cmake-conda"
-  cat > "${cmake_wrapper}" <<EOF
+  local make_wrapper="${work}/bin/make-conda"
+  cat > "${make_wrapper}" <<EOF
 #!/usr/bin/env bash
-exec "${mamba_bin}" run -r "${mamba_root}" -p "${env_prefix}" cmake "\$@"
+exec "${mamba_bin}" run -r "${mamba_root}" -p "${env_prefix}" make "\$@"
 EOF
-  chmod +x "${cmake_wrapper}"
+  chmod +x "${make_wrapper}"
 
   # The SDK / deployment target must be set before activation, so export them job-wide.
   {
-    echo "CMAKE=${cmake_wrapper}"
+    echo "MAKE_CMD=${make_wrapper}"
     echo "SDKROOT=${sdk_dir}"
     echo "CONDA_BUILD_SYSROOT=${sdk_dir}"
     echo "MACOSX_DEPLOYMENT_TARGET=11.0"
@@ -90,7 +91,7 @@ EOF
 
   echo "Toolchain ready:"
   MAMBA_ROOT_PREFIX="${mamba_root}" "${mamba_bin}" run -p "${env_prefix}" gfortran --version | head -1
-  MAMBA_ROOT_PREFIX="${mamba_root}" "${mamba_bin}" run -p "${env_prefix}" cmake --version | head -1
+  MAMBA_ROOT_PREFIX="${mamba_root}" "${mamba_bin}" run -p "${env_prefix}" make --version | head -1
 }
 
 main "$@"

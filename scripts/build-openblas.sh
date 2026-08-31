@@ -18,6 +18,8 @@ fetch_and_checkout() {
     echo "Checking out OpenBLAS ${version}..."
     git fetch origin "${version}"
     git checkout "${version}"
+    # make reuses stale in-tree objects across flag or toolchain changes
+    git clean -qfdx
     cd ..
   fi
 }
@@ -26,80 +28,119 @@ configure_and_build() {
   local install_prefix="${1:-install}"
   local static_only="${2:-false}"
 
+  case "$(uname -s)" in
+    MINGW*|MSYS*)
+      build_with_cmake "${install_prefix}"
+      ;;
+    *)
+      build_with_make "${install_prefix}" "${static_only}"
+      ;;
+  esac
+}
+
+build_with_make() {
+  local install_prefix="$1"
+  local static_only="$2"
+
+  # make -C OpenBLAS resolves a relative PREFIX inside the source tree
+  [[ "${install_prefix}" = /* ]] || install_prefix="$(pwd)/${install_prefix}"
+
+  local make_args=(
+    DYNAMIC_ARCH=1
+    TARGET="${TARGET_CPU}"
+    NUM_THREADS=64
+    USE_OPENMP=0
+    COMMON_OPT=-O3
+  )
+
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    # \$$: survive make's $$->$ and the recipe shell's expansion
+    make_args+=('LDFLAGS=-Wl,-rpath,\$$ORIGIN')
+  fi
+
+  if [[ -z "${MAKE_CMD:-}" ]]; then
+    # Only the conda-toolchain (casadi) variant links a Fortran runtime; every other
+    # artifact ships the self-contained C LAPACK.
+    make_args+=(NOFORTRAN=1)
+  fi
+
+  if [[ "${static_only}" == "true" ]]; then
+    make_args+=(NO_SHARED=1)
+  fi
+
+  echo "MAKE_ARGS: ${make_args[*]}"
+
+  # The 'shared' goal already pulls in 'libs netlib' and is .NOTPARALLEL; naming them
+  # as separate goals would let them race.
+  ${MAKE_CMD:-make} -C OpenBLAS -j "$(getconf _NPROCESSORS_ONLN)" "${make_args[@]}" shared
+
+  echo "Installing OpenBLAS..."
+  ${MAKE_CMD:-make} -C OpenBLAS "${make_args[@]}" PREFIX="${install_prefix}" install
+
+  if [[ "$(uname -s)" == "Darwin" && "${static_only}" != "true" ]]; then
+    verify_macos_abi "${install_prefix}"
+  fi
+}
+
+build_with_cmake() {
+  local install_prefix="$1"
+  local build_dir="${BUILD_DIR:-build}"
+
   local cmake_args=(
     -S OpenBLAS
-    -B "${BUILD_DIR}"
-    -DDYNAMIC_ARCH="${DYNAMIC_ARCH}"
+    -B "${build_dir}"
+    -G Ninja
+    -DDYNAMIC_ARCH=ON
     -DTARGET="${TARGET_CPU}"
     -DCMAKE_BUILD_TYPE=Release
     -DBUILD_STATIC_LIBS=ON
+    -DBUILD_SHARED_LIBS=ON
     -DUSE_OPENMP=OFF
     -DNUM_THREADS=64
     -DCMAKE_INSTALL_PREFIX="${install_prefix}"
   )
 
-  # macOS: Use Unix Makefiles (OpenBLAS's response file workaround assumes Makefiles paths)
-  if [[ "$(uname -s)" != "Darwin" ]]; then
-    cmake_args+=(-G "Ninja")
-  fi
-
-  # Add RPATH=$ORIGIN for Linux builds to look in local directory first
-  if [[ "$(uname -s)" == "Linux" ]]; then
-    cmake_args+=(
-      -DCMAKE_INSTALL_RPATH='$ORIGIN'
-      -DCMAKE_BUILD_RPATH='$ORIGIN'
-      -DCMAKE_BUILD_WITH_INSTALL_RPATH=ON
-    )
-  fi
-
-  if [[ "$static_only" == "true" ]]; then
-    echo "Configuring for static-only build (musl/static linking)"
-    cmake_args+=(-DBUILD_SHARED_LIBS=OFF)
-  else
-    cmake_args+=(-DBUILD_SHARED_LIBS=ON)
-  fi
-
   echo "CMAKE_ARGS: ${cmake_args[*]}"
-
-  # On the macOS "casadi" variant, ${CMAKE} runs cmake inside the conda-forge toolchain
-  # env (set up by scripts/setup-macos-toolchain.sh) so configure/build use the
-  # ABI-matched gfortran. Elsewhere ${CMAKE} is unset and a plain `cmake` is used.
-  ${CMAKE:-cmake} "${cmake_args[@]}"
+  cmake "${cmake_args[@]}"
 
   echo "Building and installing OpenBLAS..."
-  if [[ "$(uname -s)" == "Darwin" ]]; then
-    ${CMAKE:-cmake} --build "${BUILD_DIR}" --target install
-  else
-    ${CMAKE:-cmake} --build "${BUILD_DIR}" --parallel "$(nproc)" --target install
-  fi
-
-  if [[ "$(uname -s)" == "Darwin" && -n "${CMAKE:-}" ]]; then
-    verify_macos_abi "${install_prefix}"
-  fi
+  cmake --build "${build_dir}" --parallel "$(nproc)" --target install
 }
 
-# Guard for the casadi variant: its libopenblas dylib must link the conda-forge
-# libgfortran via @rpath, never an absolute Homebrew gcc path (libgfortran >= 13),
-# which would break the matched-ABI use case.
 verify_macos_abi() {
   local install_prefix="$1"
-  local dylib bad=0
+  local dylib links count=0 bad=0
 
-  echo "Verifying macOS libgfortran ABI of built OpenBLAS libraries..."
+  echo "Verifying macOS libgfortran linkage of built OpenBLAS libraries..."
   while IFS= read -r dylib; do
+    count=$((count + 1))
+    links=$(otool -L "${dylib}")
     echo "== ${dylib}"
-    otool -L "${dylib}"
-    if otool -L "${dylib}" | grep -q '/opt/homebrew/.*libgfortran'; then
-      echo "ERROR: ${dylib} links a Homebrew libgfortran (ABI-incompatible with CasADi)" >&2
+    echo "${links}"
+    if [[ -n "${MAKE_CMD:-}" ]]; then
+      if ! grep -q '@rpath/libgfortran' <<<"${links}"; then
+        echo "ERROR: ${dylib} does not link @rpath/libgfortran (conda gfortran was not used)" >&2
+        bad=1
+      fi
+      if grep 'libgfortran' <<<"${links}" | grep -qv '@rpath'; then
+        echo "ERROR: ${dylib} links libgfortran outside @rpath (ABI-incompatible with CasADi)" >&2
+        bad=1
+      fi
+    elif grep -q 'libgfortran' <<<"${links}"; then
+      echo "ERROR: ${dylib} links libgfortran (NOFORTRAN build must be self-contained)" >&2
       bad=1
     fi
-  done < <(find "${install_prefix}" -name 'libopenblas*.dylib')
+  done < <(find "${install_prefix}" -name 'libopenblas*.dylib' -type f)
 
-  if [[ "${bad}" -ne 0 ]]; then
-    echo "macOS libgfortran ABI check failed" >&2
+  if [[ "${count}" -eq 0 ]]; then
+    echo "ERROR: no libopenblas dylib found under ${install_prefix}" >&2
     exit 1
   fi
-  echo "macOS libgfortran ABI check passed"
+  if [[ "${bad}" -ne 0 ]]; then
+    echo "macOS libgfortran check failed" >&2
+    exit 1
+  fi
+  echo "macOS libgfortran check passed"
 }
 
 main() {
@@ -127,12 +168,11 @@ main() {
         echo "  --prefix PATH      Install prefix (default: install)"
         echo "  --target CPU       Target CPU (default: CORE2 for x86_64, ARMV8 for aarch64)"
         echo "                     Common x86_64 targets: CORE2, HASWELL, SKYLAKEX"
-        echo "  --static-only      Build static libraries only (for musl/static linking)"
+        echo "  --static-only      Build static libraries only (musl/static linking; Linux and macOS)"
         echo "Environment variables:"
         echo "  OPENBLAS_VERSION   OpenBLAS version (required)"
         echo "  TARGET_CPU         Target CPU (overrides --target and defaults)"
-        echo "  BUILD_DIR          Build directory (default: build)"
-        echo "  DYNAMIC_ARCH       Dynamic arch (default: ON)"
+        echo "  BUILD_DIR          Build directory (Windows only, default: build)"
         exit 0
         ;;
       *)
@@ -156,12 +196,8 @@ main() {
     fi
   fi
   # getarch matches FORCE_<TARGET> case-sensitively; a lowercase target silently
-  # falls back to CPU autodetection.
+  # falls back to CPU autodetection under CMake and errors out under make.
   TARGET_CPU=$(printf '%s' "${TARGET_CPU}" | tr '[:lower:]' '[:upper:]')
-
-  # Set defaults
-  BUILD_DIR="${BUILD_DIR:-build}"
-  DYNAMIC_ARCH="${DYNAMIC_ARCH:-ON}"
 
   # Check if ARCH and TARGET_CPU are set
   if [[ -z "${ARCH:-}" ]]; then
