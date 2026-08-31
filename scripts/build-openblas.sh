@@ -155,6 +155,9 @@ main() {
       TARGET_CPU="ARMV8"
     fi
   fi
+  # getarch matches FORCE_<TARGET> case-sensitively; a lowercase target silently
+  # falls back to CPU autodetection.
+  TARGET_CPU=$(printf '%s' "${TARGET_CPU}" | tr '[:lower:]' '[:upper:]')
 
   # Set defaults
   BUILD_DIR="${BUILD_DIR:-build}"
