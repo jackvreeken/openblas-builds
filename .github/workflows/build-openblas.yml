@@ -30,7 +30,7 @@ jobs:
       commit: ${{ steps.version.outputs.commit }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Get latest OpenBLAS version
         env:
@@ -117,7 +117,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Get OpenBLAS version for build
         id: version
@@ -174,7 +174,7 @@ jobs:
             bash -c "apk add --no-cache ninja && chmod +x scripts/build-openblas.sh && ./scripts/build-openblas.sh --static-only ${{ matrix.target && format('--target {0}', matrix.target) || '' }}"
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: openblas-${{ steps.version.outputs.version }}-${{ matrix.name }}${{ matrix.target && format('-{0}',
             matrix.target) || '' }}
@@ -193,7 +193,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -210,7 +210,7 @@ jobs:
           done
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.build.outputs.version }}
           name: OpenBLAS ${{ needs.build.outputs.version }}
