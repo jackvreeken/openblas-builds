@@ -56,7 +56,11 @@ OPENBLAS_VERSION=v0.3.30 ./scripts/build-openblas.sh --target HASWELL
 
 - **Settings**: `DYNAMIC_ARCH=ON`, `USE_OPENMP=OFF`
 - **Targets**: `CORE2`/`HASWELL` for x86_64, `ARMV8` for aarch64
-- **Outputs**: Static/shared libraries, headers, CMake configs
+- **Outputs**: static + shared libraries, headers, `openblas.pc`, and a CMake config.
+  Linux/macOS (make): libraries in `lib/`, headers directly in `include/`,
+  variables-style config at `lib/cmake/openblas/` (needs CMake >= 3.19, no
+  `OpenBLAS::OpenBLAS` target); Windows (CMake) keeps `include/openblas/` and the
+  imported-target config
 - **Schedule**: Weekly on Fridays (02:00 UTC) if new version available
 
 ## License
